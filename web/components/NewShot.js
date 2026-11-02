@@ -76,7 +76,7 @@ export default function NewShot({ initialClip, onBack, onReady }) {
     <main className="flex h-full flex-col">
       <header className="flex h-12 flex-none items-center gap-3 border-b border-line px-4">
         <Btn variant="ghost" onClick={onBack}>Shots</Btn>
-        <h1 className="text-base font-semibold">{clip ? clip.filename : "New shot"}</h1>
+        <h1 className="text-base font-semibold">{clip ? clip.filename : "Try it out"}</h1>
       </header>
       {stage === "empty" || stage === "uploading" ? (
         <div className="mx-auto flex w-full max-w-[680px] flex-col gap-4 px-6 py-10">

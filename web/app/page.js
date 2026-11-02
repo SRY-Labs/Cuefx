@@ -41,7 +41,6 @@ export default function Page() {
       <div className="min-h-0 flex-1 overflow-hidden">
         {view === "home" && (
           <HomeScreen
-            server={server}
             onNew={() => { setClip(null); setShot(null); setView("new"); }}
             onOpen={(next) => { setClip(next); setShot(null); setView("new"); }}
           />

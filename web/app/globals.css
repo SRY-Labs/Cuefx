@@ -113,4 +113,6 @@ input[type="range"].cue-range:disabled { opacity: 0.4; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 900ms linear infinite; }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+@keyframes caret { 50% { opacity: 0; } }
+.caret { animation: caret 1s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .spin, .caret { animation: none; } }
