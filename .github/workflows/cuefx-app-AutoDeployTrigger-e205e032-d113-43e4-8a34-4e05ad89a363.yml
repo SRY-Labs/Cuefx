@@ -4,25 +4,36 @@ name: Trigger auto deployment for cuefx-app
 on:
   # Automatically trigger it when detected changes in repo
   push:
-    branches: 
+    branches:
       [ main ]
+    # Later patterns win: everything except the frontend, docs, tests and other workflows
     paths:
     - '**'
+    - '!web/**'
+    - '!docs/**'
+    - '!tests/**'
+    - '!**.md'
+    - '!.github/**'
     - '.github/workflows/cuefx-app-AutoDeployTrigger-e205e032-d113-43e4-8a34-4e05ad89a363.yml'
 
-  # Allow manual trigger 
-  workflow_dispatch:      
+  # Allow manual trigger
+  workflow_dispatch:
+
+concurrency:
+  group: cd-cuefx-app
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions: 
+    timeout-minutes: 45
+    permissions:
       id-token: write #This is required for requesting the OIDC JWT Token
       contents: read #Required when GH token is used to authenticate with private repo
 
     steps:
       - name: Checkout to the branch
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v2
@@ -35,15 +46,10 @@ jobs:
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
+          dockerfilePath: Dockerfile
           registryUrl: cuefx.azurecr.io
           registryUsername: ${{ secrets.CUEFXAPP_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.CUEFXAPP_REGISTRY_PASSWORD }}
           containerAppName: cuefx-app
           resourceGroup: vestra-path-rg
           imageToBuild: cuefx.azurecr.io/cuefx-app:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
-
-
