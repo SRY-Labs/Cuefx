@@ -347,14 +347,18 @@ class ClipStore:
         """api.analyze, cached on disk by (clip content, hand, seed, analyze code version); the hand landmarks
         Merge needs are cached beside it. A body point other than the palm is tracked from the clip's cached Pose
         landmarks (`pose_file`) and cached by its part and side too."""
+        started = time.perf_counter()
         path = self.plate(clip_id)
         cached, landmarks = self._analyze_files(clip_id, hand, seed, body_point)
         with self.analyze_lock:
             if cached.is_file():
                 try:
-                    return json.loads(cached.read_text(encoding="utf-8"))
+                    result = json.loads(cached.read_text(encoding="utf-8"))
                 except ValueError:
                     log.warning("discarding unreadable analyze cache %s", cached)
+                else:
+                    log.info("analysis of clip %s from the cache in %.1f s", clip_id, time.perf_counter() - started)
+                    return result
             if is_palm(body_point):
                 result = self._run_analyze(path, seed, landmarks, hand)
             else:
@@ -362,6 +366,7 @@ class ClipStore:
             part = cached.with_suffix(".part")
             part.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
             part.replace(cached)
+            log.info("analysis of clip %s finished in %.1f s", clip_id, time.perf_counter() - started)
             return result
 
     def landmarks(self, clip_id: str, hand: str, seed: dict) -> Path:

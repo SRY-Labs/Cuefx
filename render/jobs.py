@@ -412,12 +412,17 @@ class StandinStore:
 
     def request_element(self, job_id: str) -> dict:
         """Enqueue the element video for a finished stand-in and return the job."""
+        started = time.perf_counter()
         _key, merge_id, merge_dir = self._merge_dir(job_id)
         done = merge_dir / "standin.json"
         if not done.is_file():
             raise not_found(f"unknown job {job_id!r}")
-        if not (merge_dir / "element.mp4").is_file():
+        if (merge_dir / "element.mp4").is_file():
+            how = "already ready"
+        else:
             self.queue.submit(f"{job_id}/element", lambda: self.element(_key, merge_id, done))
+            how = "queued"
+        log.info("element for job %s %s in %.1f s", job_id, how, time.perf_counter() - started)
         return self.document(job_id)
 
     def open_artifact(self, job_id: str, name: str) -> tuple[Path, str | None]:

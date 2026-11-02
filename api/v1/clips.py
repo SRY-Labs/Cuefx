@@ -1,6 +1,9 @@
 """Clips, plate frames, analysis, and the starter cue."""
 from __future__ import annotations
 
+import logging
+import time
+
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 
@@ -10,6 +13,7 @@ from cue.wire import cue_out
 from errors import invalid
 
 router = APIRouter()
+log = logging.getLogger("cuefx.server")
 
 
 def _store(request: Request):
@@ -46,6 +50,7 @@ def list_clips(request: Request) -> list[dict]:
 
 @router.post("/clips")
 def upload_clip(file: UploadFile, request: Request) -> JSONResponse:
+    started = time.perf_counter()
     store = _store(request)
     settings = request.app.state.settings
     declared = request.headers.get("content-length")
@@ -53,6 +58,8 @@ def upload_clip(file: UploadFile, request: Request) -> JSONResponse:
         raise invalid(f"the file is larger than {settings.max_upload_mb} MB", 413)
     info, created = store.upload(file.filename or "", file.file)
     store.warm_frames(info["clip_id"])
+    log.info("%s %s -> clip %s %s in %.1f s", request.method, request.url.path, info["clip_id"],
+             "stored" if created else "already stored", time.perf_counter() - started)
     return JSONResponse(clip_public(store, info), status_code=201 if created else 200)
 
 
@@ -85,6 +92,7 @@ def analyze(clip_id: str, body: AnalyzeIn, request: Request) -> dict:
 
 @router.post("/clips/{clip_id}/cue")
 def new_cue(clip_id: str, body: AnalyzeIn, request: Request) -> dict:
+    started = time.perf_counter()
     store = _store(request)
     seed, body_point = _seed(body), _body_point(body)
     result, info = store.analyze(clip_id, body.hand, seed, body_point), store.info(clip_id)
@@ -95,5 +103,7 @@ def new_cue(clip_id: str, body: AnalyzeIn, request: Request) -> dict:
         {"f": cue_seed["frame"], "x": cue_seed["x"], "y": cue_seed["y"]}, result["track"],
         store.transform(clip_id), result.get("body_point", asked))
     warnings = [w for w in result["warnings"] if w["code"] == "side_from_click"] + warnings
+    log.info("%s %s -> cue for clip %s in %.1f s", request.method, request.url.path, clip_id,
+             time.perf_counter() - started)
     return {"cue": cue_out(cue), "warnings": warnings, "summary": result["summary"],
             "hand_size_px": result["hand_size_px"]}

@@ -1,6 +1,9 @@
 """Stand-in jobs: create, poll, the summary, and the video files."""
 from __future__ import annotations
 
+import logging
+import time
+
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -8,6 +11,7 @@ from api.v1.models import JobIn
 from cue.wire import cue_in
 
 router = APIRouter()
+log = logging.getLogger("cuefx.server")
 
 
 def _jobs(request: Request):
@@ -16,7 +20,10 @@ def _jobs(request: Request):
 
 @router.post("/jobs")
 def create_job(body: JobIn, request: Request) -> JSONResponse:
+    started = time.perf_counter()
     job, status = _jobs(request).start(cue_in(body.cue), body.clip_id)
+    log.info("%s %s -> job %s %s in %.1f s", request.method, request.url.path, job["id"],
+             "already done" if status == 200 else "queued", time.perf_counter() - started)
     return JSONResponse(job, status_code=status)
 
 
