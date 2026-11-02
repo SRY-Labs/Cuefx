@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listClips } from "../lib/api";
 import { clipLine } from "../lib/cue";
 import { Alert, Btn, Icon, cx } from "./ui";
 
-// Stills ship with the app. A video replaces its still when the file is here:
-// web/public/showcase/input.mp4, prompted.mp4, directed.mp4.
+// Videos and their poster stills live in web/public/showcase.
 const TAKES = [
-  { id: "input", label: "Input", file: "input.mp4" },
-  { id: "prompted", label: "Prompted", file: "prompted.mp4" },
-  { id: "directed", label: "Directed", file: "directed.mp4", accent: true },
+  { id: "input", label: "Input", file: "1_input.mp4" },
+  { id: "prompted", label: "Prompted", file: "2_problem.mp4" },
+  { id: "directed", label: "Directed", file: "4_output.mp4", accent: true },
 ];
 
 const MOTION_LINE = "Follow the lead hand through the kick and release off the fist. The directed take holds that path. The prompted take leaves the hand.";
@@ -72,25 +71,50 @@ export default function HomeScreen({ onNew, onOpen }) {
   );
 }
 
+// The takes start together once every video can play through, and restart together
+// once every one has ended, so a shorter take holds its last frame instead of drifting.
 function Showcase() {
-  const [ready, setReady] = useState({});
+  const videos = useRef([]);
 
   useEffect(() => {
-    let cancel = false;
-    for (const take of TAKES) {
-      fetch(`/showcase/${take.file}`, { method: "HEAD", cache: "no-store" })
-        .then((res) => {
-          if (!cancel) setReady((prev) => ({ ...prev, [take.id]: res.ok }));
-        })
-        .catch(() => {
-          if (!cancel) setReady((prev) => ({ ...prev, [take.id]: false }));
-        });
+    const all = videos.current.filter(Boolean);
+    const loaded = new Set();
+    let ended = new Set();
+    let started = false;
+    const live = () => all.filter((video) => !video.error);
+    const playAll = () => {
+      for (const video of live()) {
+        video.currentTime = 0;
+        video.play().catch(() => {});
+      }
+    };
+    const maybeStart = () => {
+      if (started || !live().every((video) => loaded.has(video))) return;
+      started = true;
+      playAll();
+    };
+    const onReady = (event) => { loaded.add(event.target); maybeStart(); };
+    const onEnded = (event) => {
+      ended.add(event.target);
+      if (!live().every((video) => ended.has(video))) return;
+      ended = new Set();
+      playAll();
+    };
+    for (const video of all) {
+      video.addEventListener("canplaythrough", onReady);
+      video.addEventListener("ended", onEnded);
+      video.addEventListener("error", maybeStart);
+      if (video.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) loaded.add(video);
     }
-    return () => { cancel = true; };
+    maybeStart();
+    return () => {
+      for (const video of all) {
+        video.removeEventListener("canplaythrough", onReady);
+        video.removeEventListener("ended", onEnded);
+        video.removeEventListener("error", maybeStart);
+      }
+    };
   }, []);
-
-  const settled = TAKES.every((take) => ready[take.id] !== undefined);
-  const missing = TAKES.filter((take) => ready[take.id] === false);
 
   return (
     <section className="flex flex-col gap-6">
@@ -101,15 +125,10 @@ function Showcase() {
       </div>
       <div className="rounded-md bg-black px-2 pb-4 pt-2">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {TAKES.map((take) => (
-            <Take key={take.id} take={take} playing={ready[take.id] === true} missing={ready[take.id] === false} />
+          {TAKES.map((take, index) => (
+            <Take key={take.id} take={take} videoRef={(node) => { videos.current[index] = node; }} />
           ))}
         </div>
-        {settled && missing.length > 0 && (
-          <p className="mt-4 text-center text-2xs text-white/45">
-            Add {missing.map((take) => take.file).join(", ")} to web/public/showcase. Each file replaces its still.
-          </p>
-        )}
       </div>
       <TypedPrompt />
       <img
@@ -157,30 +176,22 @@ function TypedPrompt() {
   );
 }
 
-function Take({ take, playing, missing }) {
+function Take({ take, videoRef }) {
   return (
     <figure className="min-w-0">
       <div className="relative aspect-[336/192] overflow-hidden bg-black">
-        <img
-          src={`/showcase/${take.id}.jpg`}
-          alt=""
-          className={cx("absolute inset-0 h-full w-full object-cover", playing && "invisible")}
+        <video
+          ref={videoRef}
+          src={`/showcase/${take.file}`}
+          poster={`/showcase/${take.id}.jpg`}
+          className="absolute inset-0 h-full w-full object-cover"
+          muted
+          playsInline
+          preload="auto"
         />
-        {playing && (
-          <video
-            src={`/showcase/${take.file}`}
-            poster={`/showcase/${take.id}.jpg`}
-            className="absolute inset-0 h-full w-full object-cover"
-            muted
-            loop
-            playsInline
-            autoPlay
-          />
-        )}
       </div>
       <figcaption className={cx("mt-3 text-center text-xs font-semibold uppercase tracking-[0.28em]", take.accent ? "text-[#56b4e9]" : "text-white/75")}>
         <span className={take.accent ? "border-b-2 border-[#56b4e9] pb-1" : undefined}>{take.label}</span>
-        {missing && <span className="mt-1.5 block text-2xs font-normal normal-case tracking-normal text-white/40">{take.file}</span>}
       </figcaption>
     </figure>
   );
