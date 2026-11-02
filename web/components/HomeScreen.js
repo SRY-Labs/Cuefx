@@ -46,19 +46,22 @@ export default function HomeScreen({ onNew, onOpen }) {
             </div>
           )}
           {clips && clips.length > 0 && (
-            <ul className="flex flex-col gap-1.5">
-              {clips.map((clip) => (
-                <li key={clip.clip_id}>
-                  <button type="button" onClick={() => onOpen(clip)} className="flex w-full items-center gap-3 rounded-md border border-line bg-bg px-2.5 py-2.5 text-left hover:border-line2 hover:bg-raised">
-                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded border border-line2 text-mute"><Icon name="film" /></span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold">{clip.filename}</span>
-                      <span className="block truncate text-xs text-faint tnum">{clipLine(clip)}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-1.5">
+                {clips.map((clip) => (
+                  <li key={clip.clip_id}>
+                    <button type="button" onClick={() => onOpen(clip)} className="flex w-full items-center gap-3 rounded-md border border-line bg-bg px-2.5 py-2.5 text-left hover:border-line2 hover:bg-raised">
+                      <span className="flex h-9 w-9 flex-none items-center justify-center rounded border border-line2 text-mute"><Icon name="film" /></span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">{clip.filename}</span>
+                        <span className="block truncate text-xs text-faint tnum">{clipLine(clip)}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <Btn variant="soft" icon="upload" className="self-start" onClick={onNew}>Get started</Btn>
+            </div>
           )}
         </div>
       </aside>
@@ -200,5 +203,5 @@ function Take({ take, videoRef }) {
 export function ServerMark({ server }) {
   if (!server) return <span className="text-xs text-faint">Connecting…</span>;
   if (server.error) return <span className="text-xs text-err">Server not reachable</span>;
-  return <span className="text-xs text-mute tnum">v{server.version} · contract {server.contract_version}</span>;
+  return null;
 }

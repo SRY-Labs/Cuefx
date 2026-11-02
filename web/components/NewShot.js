@@ -84,8 +84,10 @@ export default function NewShot({ initialClip, onBack, onReady }) {
           {stage === "uploading" ? (
             <div className="rounded-lg border border-line bg-panel p-5" role="status">
               <div className="text-sm font-semibold">{upload.name}</div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded bg-field"><div className="h-full bg-accent" style={{ width: `${upload.pct}%` }} /></div>
-              <div className="mt-1 text-xs text-mute tnum">Uploading · {upload.pct}%. Conform starts when the file is in.</div>
+              <div className="mt-3 h-1.5 overflow-hidden rounded bg-field"><div className={`h-full ${upload.pct >= 100 ? "bar-processing" : "bg-accent"}`} style={{ width: `${upload.pct}%` }} /></div>
+              <div className="mt-1 text-xs text-mute tnum">
+                {upload.pct >= 100 ? "Processing… The file is in; CueFX is preparing the clip." : `Uploading · ${upload.pct}%. Conform starts when the file is in.`}
+              </div>
             </div>
           ) : (
             <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-line2 bg-panel px-8 py-14 text-center">
@@ -104,6 +106,12 @@ export default function NewShot({ initialClip, onBack, onReady }) {
                 </Btn>
               ))}
             </div>
+          )}
+          {stage !== "uploading" && (
+            <p className="flex items-start gap-1.5 text-2xs text-faint">
+              <Icon name="info" size={12} className="mt-px flex-none" />
+              <span>Tip: clips of about 15 seconds or less process fastest.</span>
+            </p>
           )}
         </div>
       ) : (

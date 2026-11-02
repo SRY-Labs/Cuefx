@@ -46,6 +46,7 @@ export function Btn({ variant = "secondary", size = "md", children, className, i
     primary: "bg-accent text-on-accent hover:bg-accent-hi",
     secondary: "bg-raised text-ink border border-line2 hover:border-mute",
     ghost: "text-mute hover:text-ink hover:bg-raised",
+    soft: "bg-accent/10 text-accent-hi! hover:bg-accent/20 active:bg-accent/25",
     danger: "bg-err/15 text-err border border-err/40 hover:bg-err/25",
   };
   const height = size === "sm" ? "h-7 px-2 text-xs" : "h-8 px-3 text-sm";
