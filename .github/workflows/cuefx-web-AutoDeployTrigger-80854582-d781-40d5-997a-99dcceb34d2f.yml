@@ -4,25 +4,35 @@ name: Trigger auto deployment for cuefx-web
 on:
   # Automatically trigger it when detected changes in repo
   push:
-    branches: 
+    branches:
       [ main ]
+    # Later patterns win: the frontend only, minus its tests and docs
     paths:
-    - '**'
+    - 'web/**'
+    - '!web/__tests__/**'
+    - '!web/test/**'
+    - '!web/vitest.config.mjs'
+    - '!web/**.md'
     - '.github/workflows/cuefx-web-AutoDeployTrigger-80854582-d781-40d5-997a-99dcceb34d2f.yml'
 
-  # Allow manual trigger 
-  workflow_dispatch:      
+  # Allow manual trigger
+  workflow_dispatch:
+
+concurrency:
+  group: cd-cuefx-web
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions: 
+    timeout-minutes: 30
+    permissions:
       id-token: write #This is required for requesting the OIDC JWT Token
       contents: read #Required when GH token is used to authenticate with private repo
 
     steps:
       - name: Checkout to the branch
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v2
@@ -34,16 +44,13 @@ jobs:
       - name: Build and push container image to registry
         uses: azure/container-apps-deploy-action@v2
         with:
-          appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
+          appSourcePath: ${{ github.workspace }}/web
+          dockerfilePath: Dockerfile
+          # next.config.mjs bakes the /api/v1 rewrite target into the build
+          buildArguments: CUEFX_API_ORIGIN=https://cuefx-app.graypond-7635469c.southindia.azurecontainerapps.io
           registryUrl: cuefx.azurecr.io
           registryUsername: ${{ secrets.CUEFXWEB_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.CUEFXWEB_REGISTRY_PASSWORD }}
           containerAppName: cuefx-web
           resourceGroup: vestra-path-rg
           imageToBuild: cuefx.azurecr.io/cuefx-web:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
-
-
