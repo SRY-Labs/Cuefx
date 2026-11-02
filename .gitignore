@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.venv/
+data/
+*.pyc
+web/node_modules/
+web/.next/
+tests/
+pycache/
+4.mp4
+pytest.ini
+requirements-dev.txt
