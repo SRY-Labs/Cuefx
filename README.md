@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="web/public/cuefx-logo.png" alt="CueFX" width="244">
+</p>
+
 # CueFX v2
 
 CueFX places a drawn effect on a person in a clip and composites it back onto the footage. This folder is the v2 server and the editor that talks to it.
