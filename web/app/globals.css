@@ -2,56 +2,56 @@
 
 :root, [data-theme="dark"] {
   color-scheme: dark;
-  --c-bg: 18 18 18;
-  --c-panel: 26 26 26;
-  --c-raised: 35 35 35;
-  --c-field: 16 16 16;
-  --c-well: 12 12 12;
-  --c-line: 44 44 44;
-  --c-line2: 68 68 68;
-  --c-ink: 237 237 237;
-  --c-mute: 168 168 168;
-  --c-faint: 142 142 142;
-  --c-accent: 95 211 141;
-  --c-accent-hi: 127 226 166;
-  --c-on-accent: 8 20 13;
+  --c-bg: 14 14 13;
+  --c-panel: 27 27 24;
+  --c-raised: 46 46 43;
+  --c-field: 14 14 13;
+  --c-well: 14 14 13;
+  --c-line: 45 45 42;
+  --c-line2: 55 55 52;
+  --c-ink: 247 247 246;
+  --c-mute: 195 195 189;
+  --c-faint: 151 151 144;
+  --c-accent: 67 174 122;
+  --c-accent-hi: 136 215 171;
+  --c-on-accent: 0 0 0;
   --c-track: 86 180 233;
   --c-path: 240 228 66;
   --c-occ: 229 138 192;
-  --c-warn: 245 165 36;
-  --c-err: 255 107 74;
-  --c-lane: 20 20 20;
-  --c-ph-entrance: 154 168 245;
-  --c-ph-held: 86 180 233;
-  --c-ph-flight: 240 228 66;
-  --c-ph-vanish: 189 189 189;
+  --c-warn: 233 185 120;
+  --c-err: 253 169 162;
+  --c-lane: 14 14 13;
+  --c-ph-entrance: 136 141 227;
+  --c-ph-held: 10 170 184;
+  --c-ph-flight: 196 138 46;
+  --c-ph-vanish: 195 195 189;
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --c-bg: 230 230 230;
-  --c-panel: 244 244 244;
+  --c-bg: 247 247 246;
+  --c-panel: 255 255 255;
   --c-raised: 255 255 255;
   --c-field: 255 255 255;
-  --c-well: 30 30 30;
-  --c-line: 208 208 208;
-  --c-line2: 169 169 169;
-  --c-ink: 22 22 22;
-  --c-mute: 77 77 77;
-  --c-faint: 102 102 102;
-  --c-accent: 22 118 74;
-  --c-accent-hi: 14 91 56;
+  --c-well: 27 27 24;
+  --c-line: 235 235 235;
+  --c-line2: 224 224 224;
+  --c-ink: 14 14 13;
+  --c-mute: 95 95 90;
+  --c-faint: 95 95 90;
+  --c-accent: 21 112 73;
+  --c-accent-hi: 4 86 53;
   --c-on-accent: 255 255 255;
   --c-track: 27 120 176;
   --c-path: 138 127 0;
   --c-occ: 163 60 123;
-  --c-warn: 143 91 0;
-  --c-err: 179 52 15;
-  --c-lane: 225 225 225;
-  --c-ph-entrance: 67 82 181;
-  --c-ph-held: 27 120 176;
-  --c-ph-flight: 138 127 0;
-  --c-ph-vanish: 106 106 106;
+  --c-warn: 98 64 1;
+  --c-err: 112 49 46;
+  --c-lane: 237 237 234;
+  --c-ph-entrance: 109 112 194;
+  --c-ph-held: 0 139 150;
+  --c-ph-flight: 165 109 0;
+  --c-ph-vanish: 95 95 90;
 }
 
 @theme inline {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createCue, defaults as loadDefaults, normalize, preview, validate } from "../lib/api";
 import {
   BEHAVIOURS, BEHAVIOUR_NOTE, EASINGS, ENDING_NOTE, ENDINGS, PARTS, SHAPES, addPathPoint, anchorAt,
@@ -8,11 +8,12 @@ import {
   partOf, cueForWire, phaseTimes, pointAt, setPointEasing, setPointFrame, setTiming, sideOf, spinOf, timecode,
   toThrow, withDiameter, withEnding, withLook, withShape,
 } from "../lib/cue";
+import { Group, LEFT_SECTORS, RIGHT_SECTORS, SectorNotes, SideColumn, badgesOf, sectorOf, useAutoOpen, useEscapeDrawer } from "./EditorPanels";
 import LookPicker, { LookStill } from "./LookPicker";
 import Plate, { platePoint } from "./Plate";
 import StandinPanel from "./StandinPanel";
 import Timeline from "./Timeline";
-import { Alert, Btn, Icon, IconBtn, Note, Num, Row, Section, Seg, Slider } from "./ui";
+import { Alert, Btn, Icon, IconBtn, Num, Row, Seg, Slider, cx } from "./ui";
 
 const ORBIT_FIELDS = [
   ["radius_sizes", "Radius", "sizes", 0.1, 10, 0.1],
@@ -58,6 +59,8 @@ export default function Editor({ clip, created, onBack }) {
   const [reference, setReference] = useState(null);
   const pickerRef = useRef(false);
   pickerRef.current = pickerOpen;
+  const standinRef = useRef(false);
+  standinRef.current = standin;
   const [tool, setTool] = useState("select");
   const [selected, setSelected] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -65,6 +68,8 @@ export default function Editor({ clip, created, onBack }) {
   const [switchError, setSwitchError] = useState(null);
   const [clickPick, setClickPick] = useState(null);
   const [serverDefaults, setServerDefaults] = useState(null);
+  const [leftSector, setLeftSector] = useState(null);
+  const [rightSector, setRightSector] = useState(null);
   const [scale, setScale] = useState(0);
   const onScale = useCallback((value) => setScale(value), []);
   const [palms, setPalms] = useState(() => {
@@ -79,6 +84,16 @@ export default function Editor({ clip, created, onBack }) {
 
   useEffect(() => { loadDefaults().then(setServerDefaults).catch(() => {}); }, []);
 
+  const messages = useMemo(() => [
+    ...warnings.map((warning) => ({ key: warning.id, sector: sectorOf(warning), severity: warning.severity })),
+    ...(switchError ? [{ key: `switch:${switchError.code}:${switchError.message}`, sector: "tracking", severity: "error" }] : []),
+  ], [warnings, switchError]);
+  const badges = badgesOf(messages);
+  const openSector = useCallback((side, id) => (side === "left" ? setLeftSector : setRightSector)(id), []);
+  const closeAll = useCallback(() => { setLeftSector(null); setRightSector(null); }, []);
+  useAutoOpen(messages, openSector);
+  useEscapeDrawer(!!(leftSector || rightSector), closeAll);
+
   useEffect(() => {
     refresh(created.cue);
     return () => flight.current?.abort();
@@ -86,7 +101,7 @@ export default function Editor({ clip, created, onBack }) {
 
   useEffect(() => {
     function onKey(event) {
-      if (pickerRef.current || event.target.closest("input, textarea, select, button")) return;
+      if (pickerRef.current || standinRef.current || event.target.closest("input, textarea, select, button")) return;
       if (event.key === "ArrowLeft") setFrame((value) => Math.max(0, value - (event.shiftKey ? 10 : 1)));
       if (event.key === "ArrowRight") setFrame((value) => Math.min(clip.frames - 1, value + (event.shiftKey ? 10 : 1)));
       if (event.key === " ") { event.preventDefault(); togglePlay(); }
@@ -274,18 +289,196 @@ export default function Editor({ clip, created, onBack }) {
   const trail = (cue.track || []).filter((point) => point.frame <= frame && point.frame > frame - 18);
   const selectedPoint = selected != null ? route[selected] : null;
 
+  const trackingSector = (
+    <>
+      <Row label="Tracking" hint="Chooses the body point the effect follows. Pose points do not need a click.">
+        <Seg label="Attached to" value={part} options={PARTS} columns={3} disabled={!!switching} onChange={requestPart} />
+        {part !== "head" && (
+          <div className="mt-1">
+            <Seg label="Side" value={side} options={[["right", "Right"], ["left", "Left"]]} disabled={!!switching} onChange={requestSide} />
+          </div>
+        )}
+        {switchError && <p className="mt-1 text-2xs text-err" role="alert">{switchError.message}</p>}
+        <button type="button" className="mt-1 text-left text-2xs text-mute underline underline-offset-2 hover:text-ink disabled:opacity-40" disabled={!!switching} onClick={() => setClickPick({ part, side: side || cue.hand })}>Wrong person or hand? Click it in the video</button>
+      </Row>
+      <SectorNotes id="tracking" warnings={warnings}>
+        {here && <li className="text-2xs text-mute tnum">{partName(cue)} {Math.round(here.x)}, {Math.round(here.y)} · {Math.round(here.confidence * 100)}%{here.uncertain ? " · uncertain" : ""}</li>}
+      </SectorNotes>
+    </>
+  );
+
+  const appearanceSector = (
+    <>
+      <Group>
+        <Row label="Tint" hint="Colour mixed into the stand-in.">
+          <input aria-label="Tint" type="color" className="h-7 w-full cursor-pointer rounded border border-line bg-field" value={tint} onChange={(event) => commit({ ...cue, grade: { ...cue.grade, tint: event.target.value } })} />
+        </Row>
+        <Row label="Glow">
+          <Slider label="Glow" value={cue.grade?.glow ?? 0.6} min={0} max={1} step={0.05} onChange={(value) => commit({ ...cue, grade: { ...cue.grade, glow: value } })} format={(value) => `${Math.round(value * 100)}%`} />
+        </Row>
+      </Group>
+      <Group>
+        <Row label="Look" hint="Chooses the effect's material and colour.">
+          <div className="flex items-center gap-2">
+            {cue.look === "reference" && reference?.url
+              ? <img src={reference.url} alt="" className="h-8 w-8 flex-none rounded border border-line2 object-cover" />
+              : <LookStill id={lookById(cue.look).id} className="h-8 w-8 flex-none rounded border border-line2" />}
+            <span className="min-w-0 flex-1 break-words text-xs font-medium">{lookById(cue.look).name}</span>
+            <Btn size="sm" onClick={() => { setPickerKey((value) => value + 1); setPickerOpen(true); }}>Change</Btn>
+          </div>
+        </Row>
+      </Group>
+      <Group>
+        <Row label="Shape" hint="Sets the outline the stand-in draws.">
+          <Seg label="Shape" value={cue.shape || "sphere"} options={SHAPES} columns={2} onChange={(value) => commit(withShape(cue, value))} />
+        </Row>
+      </Group>
+      <SectorNotes id="appearance" warnings={warnings} />
+    </>
+  );
+
+  const effectSector = (
+    <>
+      <Row label="Behaviour" hint={BEHAVIOUR_NOTE[cue.behaviour || "hold_throw"]}>
+        <Seg label="Behaviour" value={cue.behaviour || "hold_throw"} options={BEHAVIOURS} columns={2} onChange={setBehaviour} />
+      </Row>
+      {cue.behaviour === "orbit" && ORBIT_FIELDS.map(([key, label, unit, min, max, step]) => (
+        <Row key={key} label={label}>
+          <label className="flex items-center gap-2">
+            <Num value={orbitValue(cue, key, serverDefaults)} min={min} max={max} step={step} onChange={(value) => commit({ ...cue, orbit: { ...cue.orbit, [key]: value } })} />
+            <span className="flex-none whitespace-nowrap text-2xs text-faint">{unit}</span>
+          </label>
+        </Row>
+      ))}
+      <Row label="Spin" hint="Degrees per second. Default uses the shape's own spin.">
+        <div className="flex items-center gap-2">
+          <Num value={spinOf(cue, serverDefaults)} min={-1440} max={1440} onChange={(value) => commit({ ...cue, spin_deg_per_s: value })} />
+          <span className="flex-none whitespace-nowrap text-2xs text-faint">°/s</span>
+          <Btn size="sm" variant="ghost" disabled={cue.spin_deg_per_s == null} onClick={() => { const next = { ...cue }; delete next.spin_deg_per_s; commit(next); }}>Default</Btn>
+        </div>
+      </Row>
+      <Row label="Ending" hint={ENDING_NOTE[cue.ending || "fade"]}>
+        <Seg label="Ending" value={cue.ending || "fade"} options={ENDINGS} onChange={(value) => commit(withEnding(cue, value, serverDefaults))} />
+      </Row>
+      <Row label="Size" hint="Sets the outer size of the effect, including its path.">
+        <div className="flex items-center gap-2">
+          <Num value={cue.diameter_px} min={8} max={800} onChange={(value) => commit(withDiameter(cue, value))} />
+          <span className="flex-none whitespace-nowrap text-2xs text-faint">px</span>
+        </div>
+        <Slider label="Size" value={cue.diameter_px || 80} min={8} max={400} onChange={(value) => commit(withDiameter(cue, value))} />
+      </Row>
+      <Row label={`Offset from ${part === "palm" ? "palm" : part}`} hint="Moves the effect away from the tracked body point.">
+        <div className="grid grid-cols-2 gap-1.5">
+          <Num value={cue.anchor_offset?.[0] ?? 0} min={-600} max={600} onChange={(value) => commit({ ...cue, anchor_offset: [value, cue.anchor_offset?.[1] ?? 0] })} />
+          <Num value={cue.anchor_offset?.[1] ?? 0} min={-600} max={600} onChange={(value) => commit({ ...cue, anchor_offset: [cue.anchor_offset?.[0] ?? 0, value] })} />
+        </div>
+      </Row>
+      <SectorNotes id="effect" warnings={warnings} />
+    </>
+  );
+
+  const timingSector = (
+    <>
+      {effectRange && (
+        <div className="mb-2 mt-2">
+          <div className="flex items-baseline justify-between text-xs">
+            <span className="text-mute">Effect length</span>
+            <span className={`tnum ${length > cap ? "text-err" : "text-ink"}`}>{(length / clip.fps).toFixed(1)} s / {(cap / clip.fps).toFixed(1)} s</span>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded bg-field" role="progressbar" aria-valuenow={length} aria-valuemax={cap}>
+            <div className={`h-full ${length > cap ? "bg-err" : "bg-accent"}`} style={{ width: `${Math.min(100, (length / cap) * 100)}%` }} />
+          </div>
+        </div>
+      )}
+      <Row label="Entrance" hint="How long the effect takes to become fully visible.">
+        <div className="flex items-center gap-2">
+          <Num value={cue.entrance?.seconds ?? 0} min={0} max={3} step={0.05} onChange={(value) => commit({ ...cue, entrance: { seconds: value } })} />
+          <span className="flex-none whitespace-nowrap text-2xs text-faint">s</span>
+        </div>
+      </Row>
+      <Row label="Appear"><Num value={cue.appear_frame} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "appear", value))} /></Row>
+      {!hold && <Row label="Release" hint="When the effect leaves the body point."><Num value={cue.release_frame} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "release", value))} /></Row>}
+      <Row label="Vanish start"><Num value={cue.vanish?.start} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "vanishStart", value))} /></Row>
+      <Row label="Vanish end"><Num value={cue.vanish?.end} min={0} max={clip.frames} onChange={(value) => commit(setTiming(cue, "vanishEnd", value))} /></Row>
+      <SectorNotes id="timing" warnings={warnings} />
+    </>
+  );
+
+  const pathSector = (
+    <div className="pt-2">
+      {hold ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-mute">{BEHAVIOUR_NOTE[cue.behaviour]}</p>
+          <Btn size="sm" icon="route" onClick={() => setBehaviour("hold_throw")}>Switch to Hold + throw</Btn>
+        </div>
+      ) : (
+        <>
+          <p className="text-xs text-mute">{Math.max(0, (cue.route?.length || 1) - 1)} path {(cue.route?.length || 1) === 2 ? "point" : "points"}. Click the picture to add one, then drag the diamond.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Btn size="sm" icon="route" onClick={() => setTool("draw")}>Draw path</Btn>
+            <Btn size="sm" icon="plus" onClick={() => {
+              const at = anchor || { x: clip.plate_size[0] / 2, y: clip.plate_size[1] / 2 };
+              const result = addPathPoint(cue, at.x + 120, at.y);
+              if (result.refused) setNotice(result.refused);
+              else { setSelected(result.index); setTool("select"); commit(result.cue); }
+            }}>Add point</Btn>
+            <Btn size="sm" variant="ghost" disabled={!origin.current || sameRoute(origin.current, cue.route)} onClick={() => { setSelected(null); commit({ ...cue, route: origin.current.map((point) => ({ ...point })) }); }}>Reset path</Btn>
+          </div>
+        </>
+      )}
+      {selected != null && cue.route?.[selected] && (
+        <div className="mt-3 rounded border border-line bg-field p-2">
+          <div className="text-2xs font-semibold uppercase tracking-wider text-faint">Point {selected + 1}{selected === 0 ? " · release" : ""}</div>
+          <Row label="Frame">
+            <Num value={cue.route[selected].f} min={0} max={clip.frames - 1} disabled={selected === 0} onChange={(value) => { const next = setPointFrame(cue, selected, value); commit(next); setFrame(next.route[selected].f); }} />
+          </Row>
+          {selected > 0 && (
+            <>
+              <Row label="Position">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Num value={Math.round(cue.route[selected].x)} min={-2000} max={4000} onChange={(value) => commit(movePathPoint(cue, selected, value, cue.route[selected].y))} />
+                  <Num value={Math.round(cue.route[selected].y)} min={-2000} max={3000} onChange={(value) => commit(movePathPoint(cue, selected, cue.route[selected].x, value))} />
+                </div>
+              </Row>
+              <Row label="Easing">
+                <Seg label="Easing" value={cue.route[selected].easing_in || "linear"} options={EASINGS} columns={2} onChange={(value) => commit(setPointEasing(cue, selected, value))} />
+              </Row>
+              <Btn size="sm" variant="danger" className="mt-1" onClick={() => { const next = deletePathPoint(cue, selected); setSelected(null); commit(next); }}>Delete point</Btn>
+            </>
+          )}
+          {selected === 0 && <p className="text-2xs text-faint">The release starts on the body point. Drag a later diamond, or draw the flight.</p>}
+        </div>
+      )}
+      <SectorNotes id="path" warnings={warnings} />
+    </div>
+  );
+
   return (
     <main className="relative flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="flex h-12 flex-none items-center gap-3 border-b border-line bg-panel px-4">
-        <Btn variant="ghost" onClick={onBack}>Shots</Btn>
-        <h1 className="min-w-0 truncate text-base font-semibold">{clip.filename}</h1>
-        <span className="hidden text-xs text-faint tnum sm:inline">{clipLine(clip)}</span>
-        <span className="flex-1" />
-        {busy && <span className="text-xs text-mute">Updating…</span>}
-        {switching && <span className="inline-flex items-center gap-1.5 text-xs text-mute"><Icon name="loader" size={13} className="spin" /> Tracking the {switching}</span>}
-        <Btn variant="primary" disabled={busy || !!switching || errors.length > 0} onClick={() => { setPlaying(false); setStandin(true); }}>Render stand-in</Btn>
+      <header className="grid h-12 flex-none grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <Btn variant="ghost" onClick={onBack}>Shots</Btn>
+          <h1 className="min-w-0 truncate text-base font-semibold">{clip.filename}</h1>
+          <span className="hidden truncate text-xs text-faint tnum lg:inline">{clipLine(clip)}</span>
+        </div>
+        <div role="tablist" aria-label="Editor view" className="flex gap-0.5 rounded border border-line bg-field p-0.5">
+          <button type="button" role="tab" aria-selected={!standin} onClick={() => setStandin(false)}
+            className={cx("inline-flex h-7 items-center gap-1.5 rounded-sm px-3 text-xs font-medium", !standin ? "bg-accent text-on-accent" : "text-mute hover:bg-raised hover:text-ink")}>
+            <Icon name="sliders" size={14} />Editor
+          </button>
+          <button type="button" role="tab" aria-selected={standin} disabled={!standin && (busy || !!switching || errors.length > 0)} onClick={() => { if (standin) return; setPlaying(false); setStandin(true); }}
+            className={cx("inline-flex h-7 items-center gap-1.5 rounded-sm px-3 text-xs font-medium disabled:opacity-40", standin ? "bg-accent text-on-accent" : "text-mute hover:bg-raised hover:text-ink")}>
+            <Icon name="orb" size={14} />Render stand-in
+          </button>
+        </div>
+        <div className="flex min-w-0 items-center justify-end gap-3">
+          {busy && <span className="text-xs text-mute">Updating…</span>}
+          {switching && <span className="inline-flex items-center gap-1.5 text-xs text-mute"><Icon name="loader" size={13} className="spin" /> Tracking the {switching}</span>}
+        </div>
       </header>
-      <div className="flex min-h-0 flex-1">
+      <div className={standin ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
+      <div className="relative flex min-h-0 flex-1">
+        <SideColumn side="left" sectors={LEFT_SECTORS} active={leftSector} onToggle={setLeftSector} badges={badges} content={{ tracking: trackingSector, appearance: appearanceSector }} />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="relative flex min-h-0 flex-1 flex-col p-3">
             {error && <Alert error={error}>The cue could not be checked</Alert>}
@@ -326,157 +519,16 @@ export default function Editor({ clip, created, onBack }) {
             {clickPick && <p className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 rounded bg-black/75 px-3 py-1.5 text-sm text-white">Click the {clickPick.part} in the picture</p>}
             {notice && <p className="absolute bottom-16 left-1/2 w-[420px] max-w-[90%] -translate-x-1/2 rounded border border-warn/40 bg-panel px-3 py-2 text-sm text-warn" role="status">{notice}</p>}
           </div>
-          <div className="flex h-10 flex-none items-center gap-2 border-t border-line px-3">
-            <button type="button" className="flex h-8 w-8 items-center justify-center rounded border border-line2 bg-raised" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay}>
-              <Icon name={playing ? "pause" : "play"} size={14} />
-            </button>
-            <span className="text-xs text-mute tnum">{frame} · {timecode(frame, clip.fps)}</span>
-            <span className="flex-1" />
-            <span className="text-2xs text-faint">{tool === "draw" ? "Draw" : "Select"} · Space plays · arrows step</span>
-          </div>
         </div>
-        <aside className="flex w-[380px] flex-none flex-col overflow-y-auto border-l border-line bg-panel" aria-label="Inspector">
-          <Section title="Whole effect">
-            <Row label="Behaviour" hint={BEHAVIOUR_NOTE[cue.behaviour || "hold_throw"]}>
-              <Seg label="Behaviour" value={cue.behaviour || "hold_throw"} options={BEHAVIOURS} columns={2} onChange={setBehaviour} />
-            </Row>
-            {cue.behaviour === "orbit" && ORBIT_FIELDS.map(([key, label, unit, min, max, step]) => (
-              <Row key={key} label={label}>
-                <label className="flex items-center gap-2">
-                  <Num value={orbitValue(cue, key, serverDefaults)} min={min} max={max} step={step} onChange={(value) => commit({ ...cue, orbit: { ...cue.orbit, [key]: value } })} />
-                  <span className="text-2xs text-faint">{unit}</span>
-                </label>
-              </Row>
-            ))}
-            <Row label="Attached to" hint="Chooses the body point the effect follows. Pose points do not need a click.">
-              <Seg label="Attached to" value={part} options={PARTS} columns={3} disabled={!!switching} onChange={requestPart} />
-              {part !== "head" && (
-                <div className="mt-1">
-                  <Seg label="Side" value={side} options={[["right", "Right"], ["left", "Left"]]} disabled={!!switching} onChange={requestSide} />
-                </div>
-              )}
-              {switchError && <p className="mt-1 text-2xs text-err" role="alert">{switchError.message}</p>}
-              <button type="button" className="mt-1 text-2xs text-mute underline underline-offset-2 hover:text-ink disabled:opacity-40" disabled={!!switching} onClick={() => setClickPick({ part, side: side || cue.hand })}>Wrong person or hand? Click it in the video</button>
-            </Row>
-            <Row label="Shape" hint="Sets the outline the stand-in draws.">
-              <Seg label="Shape" value={cue.shape || "sphere"} options={SHAPES} columns={2} onChange={(value) => commit(withShape(cue, value))} />
-            </Row>
-            <Row label="Spin" hint="Degrees per second. Default uses the shape's own spin.">
-              <div className="flex items-center gap-2">
-                <Num value={spinOf(cue, serverDefaults)} min={-1440} max={1440} onChange={(value) => commit({ ...cue, spin_deg_per_s: value })} />
-                <span className="text-2xs text-faint">°/s</span>
-                <Btn size="sm" variant="ghost" disabled={cue.spin_deg_per_s == null} onClick={() => { const next = { ...cue }; delete next.spin_deg_per_s; commit(next); }}>Default</Btn>
-              </div>
-            </Row>
-            <Row label="Look" hint="Chooses the effect's material and colour.">
-              <div className="flex items-center gap-2">
-                {cue.look === "reference" && reference?.url
-                  ? <img src={reference.url} alt="" className="h-9 w-9 flex-none rounded border border-line2 object-cover" />
-                  : <LookStill id={lookById(cue.look).id} className="h-9 w-9 flex-none rounded border border-line2" />}
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{lookById(cue.look).name}</span>
-                <Btn size="sm" onClick={() => { setPickerKey((value) => value + 1); setPickerOpen(true); }}>Change</Btn>
-              </div>
-            </Row>
-            <Row label="Ending" hint={ENDING_NOTE[cue.ending || "fade"]}>
-              <Seg label="Ending" value={cue.ending || "fade"} options={ENDINGS} onChange={(value) => commit(withEnding(cue, value, serverDefaults))} />
-            </Row>
-            <Row label="Size" hint="Sets the outer size of the effect, including its path.">
-              <div className="flex items-center gap-2">
-                <Num value={cue.diameter_px} min={8} max={800} onChange={(value) => commit(withDiameter(cue, value))} />
-                <span className="text-2xs text-faint">px</span>
-              </div>
-              <Slider label="Size" value={cue.diameter_px || 80} min={8} max={400} onChange={(value) => commit(withDiameter(cue, value))} />
-            </Row>
-            <Row label={`Offset from ${part === "palm" ? "palm" : part}`} hint="Moves the effect away from the tracked body point.">
-              <div className="grid grid-cols-2 gap-1.5">
-                <Num value={cue.anchor_offset?.[0] ?? 0} min={-600} max={600} onChange={(value) => commit({ ...cue, anchor_offset: [value, cue.anchor_offset?.[1] ?? 0] })} />
-                <Num value={cue.anchor_offset?.[1] ?? 0} min={-600} max={600} onChange={(value) => commit({ ...cue, anchor_offset: [cue.anchor_offset?.[0] ?? 0, value] })} />
-              </div>
-            </Row>
-          </Section>
-          <Section title="Timing">
-            {effectRange && (
-              <div className="mb-2">
-                <div className="flex items-baseline justify-between text-xs">
-                  <span className="text-mute">Effect length</span>
-                  <span className={`tnum ${length > cap ? "text-err" : "text-ink"}`}>{(length / clip.fps).toFixed(1)} s / {(cap / clip.fps).toFixed(1)} s</span>
-                </div>
-                <div className="mt-1 h-1.5 overflow-hidden rounded bg-field" role="progressbar" aria-valuenow={length} aria-valuemax={cap}>
-                  <div className={`h-full ${length > cap ? "bg-err" : "bg-accent"}`} style={{ width: `${Math.min(100, (length / cap) * 100)}%` }} />
-                </div>
-              </div>
-            )}
-            <Row label="Entrance" hint="How long the effect takes to become fully visible.">
-              <div className="flex items-center gap-2">
-                <Num value={cue.entrance?.seconds ?? 0} min={0} max={3} step={0.05} onChange={(value) => commit({ ...cue, entrance: { seconds: value } })} />
-                <span className="text-2xs text-faint">s</span>
-              </div>
-            </Row>
-            <Row label="Appear"><Num value={cue.appear_frame} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "appear", value))} /></Row>
-            {!hold && <Row label="Release" hint="When the effect leaves the body point."><Num value={cue.release_frame} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "release", value))} /></Row>}
-            <Row label="Vanish start"><Num value={cue.vanish?.start} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "vanishStart", value))} /></Row>
-            <Row label="Vanish end"><Num value={cue.vanish?.end} min={0} max={clip.frames} onChange={(value) => commit(setTiming(cue, "vanishEnd", value))} /></Row>
-          </Section>
-          <Section title="Path">
-            {hold ? (
-              <div className="flex flex-col gap-2">
-                <p className="text-xs text-mute">{BEHAVIOUR_NOTE[cue.behaviour]}</p>
-                <Btn size="sm" icon="route" onClick={() => setBehaviour("hold_throw")}>Switch to Hold + throw</Btn>
-              </div>
-            ) : (
-              <>
-                <p className="text-xs text-mute">{Math.max(0, (cue.route?.length || 1) - 1)} path {(cue.route?.length || 1) === 2 ? "point" : "points"}. Click the picture to add one, then drag the diamond.</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Btn size="sm" icon="route" onClick={() => setTool("draw")}>Draw path</Btn>
-                  <Btn size="sm" icon="plus" onClick={() => {
-                    const at = anchor || { x: clip.plate_size[0] / 2, y: clip.plate_size[1] / 2 };
-                    const result = addPathPoint(cue, at.x + 120, at.y);
-                    if (result.refused) setNotice(result.refused);
-                    else { setSelected(result.index); setTool("select"); commit(result.cue); }
-                  }}>Add point</Btn>
-                  <Btn size="sm" variant="ghost" disabled={!origin.current || sameRoute(origin.current, cue.route)} onClick={() => { setSelected(null); commit({ ...cue, route: origin.current.map((point) => ({ ...point })) }); }}>Reset path</Btn>
-                </div>
-              </>
-            )}
-            {selected != null && cue.route?.[selected] && (
-              <div className="mt-3 rounded border border-line bg-field p-2">
-                <div className="text-2xs font-semibold uppercase tracking-wider text-faint">Point {selected + 1}{selected === 0 ? " · release" : ""}</div>
-                <Row label="Frame">
-                  <Num value={cue.route[selected].f} min={0} max={clip.frames - 1} disabled={selected === 0} onChange={(value) => { const next = setPointFrame(cue, selected, value); commit(next); setFrame(next.route[selected].f); }} />
-                </Row>
-                {selected > 0 && (
-                  <>
-                    <Row label="Position">
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <Num value={Math.round(cue.route[selected].x)} min={-2000} max={4000} onChange={(value) => commit(movePathPoint(cue, selected, value, cue.route[selected].y))} />
-                        <Num value={Math.round(cue.route[selected].y)} min={-2000} max={3000} onChange={(value) => commit(movePathPoint(cue, selected, cue.route[selected].x, value))} />
-                      </div>
-                    </Row>
-                    <Row label="Easing">
-                      <Seg label="Easing" value={cue.route[selected].easing_in || "linear"} options={EASINGS} columns={2} onChange={(value) => commit(setPointEasing(cue, selected, value))} />
-                    </Row>
-                    <Btn size="sm" variant="danger" className="mt-1" onClick={() => { const next = deletePathPoint(cue, selected); setSelected(null); commit(next); }}>Delete point</Btn>
-                  </>
-                )}
-                {selected === 0 && <p className="text-2xs text-faint">The release starts on the body point. Drag a later diamond, or draw the flight.</p>}
-              </div>
-            )}
-          </Section>
-          <Section title="Appearance">
-            <Row label="Tint" hint="Colour mixed into the stand-in.">
-              <input aria-label="Tint" type="color" className="h-8 w-full cursor-pointer rounded border border-line bg-field" value={tint} onChange={(event) => commit({ ...cue, grade: { ...cue.grade, tint: event.target.value } })} />
-            </Row>
-            <Row label="Glow">
-              <Slider label="Glow" value={cue.grade?.glow ?? 0.6} min={0} max={1} step={0.05} onChange={(value) => commit({ ...cue, grade: { ...cue.grade, glow: value } })} format={(value) => `${Math.round(value * 100)}%`} />
-            </Row>
-          </Section>
-          <ul className="flex flex-col gap-1.5 px-3 py-3">
-            {here && <li className="text-xs text-mute tnum">{partName(cue)} {Math.round(here.x)}, {Math.round(here.y)} · {Math.round(here.confidence * 100)}%{here.uncertain ? " · uncertain" : ""}</li>}
-            {warnings.map((warning) => (
-              <li key={warning.id}><Note severity={warning.severity}>{warning.message}</Note></li>
-            ))}
-          </ul>
-        </aside>
+        <SideColumn side="right" sectors={RIGHT_SECTORS} active={rightSector} onToggle={setRightSector} badges={badges} content={{ effect: effectSector, timing: timingSector, path: pathSector }} />
+      </div>
+      <div className="flex h-10 flex-none items-center gap-2 border-t border-line px-3">
+        <button type="button" className="flex h-8 w-8 items-center justify-center rounded border border-line2 bg-raised" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay}>
+          <Icon name={playing ? "pause" : "play"} size={14} />
+        </button>
+        <span className="text-xs text-mute tnum">{frame} · {timecode(frame, clip.fps)}</span>
+        <span className="flex-1" />
+        <span className="text-2xs text-faint">{tool === "draw" ? "Draw" : "Select"} · Space plays · arrows step</span>
       </div>
       <Timeline
         clip={clip}
@@ -490,6 +542,7 @@ export default function Editor({ clip, created, onBack }) {
         onPointFrame={(index, value) => { const next = setPointFrame(cueRef.current, index, value); remember(next); return next.route[index].f; }}
         onCommit={() => refresh(cueRef.current)}
       />
+      </div>
       {standin && <StandinPanel clip={clip} cue={cue} onClose={() => setStandin(false)} />}
       {pickerOpen && (
         <LookPicker key={pickerKey} cue={cue} variants={variants} reference={reference} onClose={() => setPickerOpen(false)} onApply={applyLook} />

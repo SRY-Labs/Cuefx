@@ -33,7 +33,7 @@ export default function HomeScreen({ onNew, onOpen }) {
           <h1 className="text-sm font-semibold">Shots</h1>
           {clips && !error && <span className="text-xs text-faint tnum">{clips.length}</span>}
           <span className="flex-1" />
-          <Btn variant="primary" icon="upload" onClick={onNew}>Try it out</Btn>
+          <Btn variant="primary" icon="upload" onClick={onNew}>Get started</Btn>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {error && <Alert error={error} action={<Btn variant="primary" onClick={load}>Try again</Btn>}>Clips could not be loaded</Alert>}
@@ -60,7 +60,6 @@ export default function HomeScreen({ onNew, onOpen }) {
                   </li>
                 ))}
               </ul>
-              <Btn variant="soft" icon="upload" className="self-start" onClick={onNew}>Get started</Btn>
             </div>
           )}
         </div>
@@ -134,14 +133,44 @@ function Showcase() {
         </div>
       </div>
       <TypedPrompt />
-      <img
-        src="/showcase/under-the-hood.jpg"
-        width={1024}
-        height={382}
-        alt="Under the hood: footage, MediaPipe body tracking, a CueFX directed path, layout control, an LTX-2.5 render in ComfyUI, and the final composite."
-        className="w-full rounded-md bg-black"
-      />
+      <UnderTheHood />
     </section>
+  );
+}
+
+const HOOD = [
+  { src: "/showcase/hood-1-footage.png", title: "Footage", tag: "Input" },
+  { src: "/showcase/hood-2-tracking.png", title: "Body tracking", tag: "MediaPipe" },
+  { src: "/showcase/hood-3-path.png", title: "Directed path", tag: "CueFX" },
+  { src: "/showcase/hood-4-layout.png", title: "Layout", tag: "Control" },
+  { src: "/showcase/hood-5-render.png", title: "LTX-2.5 render", tag: "ComfyUI", hot: true },
+  { src: "/showcase/hood-6-composite.png", title: "Final composite", tag: "Output" },
+];
+
+function UnderTheHood() {
+  return (
+    <div className="rounded-md bg-black px-4 pb-5 pt-4">
+      <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-white/50">
+        <span className="text-track">05</span> / Under the hood
+      </p>
+      <ol className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {HOOD.map((step) => (
+          <li
+            key={step.src}
+            className={cx(
+              "overflow-hidden rounded-md border bg-white/[0.03]",
+              step.hot ? "border-fuchsia-400/70 shadow-[0_0_18px_rgba(232,121,249,0.35)]" : "border-white/10",
+            )}
+          >
+            <img src={step.src} width={1024} height={576} alt={`${step.title} (${step.tag})`} loading="lazy" className="aspect-video w-full object-cover" />
+            <div className="px-2 py-1.5">
+              <p className="text-xs font-semibold text-white">{step.title}</p>
+              <p className={cx("font-mono text-2xs uppercase tracking-[0.15em]", step.hot ? "text-fuchsia-400" : "text-white/50")}>{step.tag}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

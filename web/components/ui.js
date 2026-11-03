@@ -29,6 +29,9 @@ const ICONS = {
   image: "M4 5h16v14H4zM4 15l4-4 3 3 3-4 6 6",
   orb: "M5 12a7 7 0 1 0 14 0 7 7 0 1 0-14 0",
   trash: "M5 7h14M9 7V5h6v2M8 7l1 12h6l1-12",
+  palette: "M12 4a8 8 0 0 0 0 16c1.1 0 1.6-.8 1.3-1.7-.4-1.1.3-2.3 1.5-2.3H17a3 3 0 0 0 3-3c0-5-3.6-9-8-9zM8 11h.01M10.5 7.5h.01M14.5 7.5h.01",
+  sliders: "M5 7h8M17 7h2M15 5v4M5 17h2M11 17h8M9 15v4",
+  clock: "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 8v4l3 2",
 };
 
 export function Icon({ name, size = 16, className }) {
@@ -46,7 +49,6 @@ export function Btn({ variant = "secondary", size = "md", children, className, i
     primary: "bg-accent text-on-accent hover:bg-accent-hi",
     secondary: "bg-raised text-ink border border-line2 hover:border-mute",
     ghost: "text-mute hover:text-ink hover:bg-raised",
-    soft: "bg-accent/10 text-accent-hi! hover:bg-accent/20 active:bg-accent/25",
     danger: "bg-err/15 text-err border border-err/40 hover:bg-err/25",
   };
   const height = size === "sm" ? "h-7 px-2 text-xs" : "h-8 px-3 text-sm";
@@ -66,10 +68,12 @@ export function IconBtn({ icon, label, active, className, ...props }) {
   );
 }
 
-export function Alert({ error, children, action }) {
+export function Alert({ error, children, action, icon }) {
   return (
-    <div role="alert" className="rounded-md border border-err/40 bg-err/10 px-3 py-2 text-sm">
-      <div className="font-semibold text-ink">{children}</div>
+    <div role="alert" className={cx("rounded-md border border-err/40 px-3 py-2 text-sm", icon ? "bg-err/5" : "bg-err/10")}>
+      {icon
+        ? <div className="flex items-center gap-1.5 font-semibold text-err"><Icon name={icon} size={15} className="flex-none" />{children}</div>
+        : <div className="font-semibold text-ink">{children}</div>}
       {error?.message && <p className="mt-1 text-mute">{error.message}</p>}
       {error?.code && <p className="mt-1 text-xs text-faint tnum">{error.code}{error.status ? ` · ${error.status}` : ""}</p>}
       {action && <div className="mt-2">{action}</div>}
@@ -90,7 +94,7 @@ export function Num({ value, min, max, step = 1, onChange, disabled }) {
   return (
     <input
       type="number"
-      className="h-8 w-full rounded border border-line bg-field px-2 text-sm text-ink tnum disabled:opacity-40"
+      className="h-7 w-full min-w-0 rounded border border-line bg-field px-1.5 text-xs text-ink tnum disabled:opacity-40"
       value={value ?? ""}
       min={min}
       max={max}
@@ -111,8 +115,8 @@ export function Seg({ label, value, options, onChange, disabled, columns }) {
     <div role="radiogroup" aria-label={label} className={cx("gap-0.5 rounded border border-line bg-field p-0.5", columns ? SEG_COLUMNS[columns] : "flex")}>
       {options.map(([id, text]) => (
         <button key={id} type="button" role="radio" aria-checked={value === id} title={text} disabled={disabled} onClick={() => onChange(id)}
-          className={cx("flex h-[34px] min-w-0 items-center justify-center whitespace-nowrap rounded-sm px-1 text-2xs leading-none disabled:opacity-35", columns ? "" : "flex-1", value === id ? "bg-accent/20 text-accent" : "text-mute hover:bg-raised hover:text-ink")}>
-          <span className="truncate px-0.5">{text}</span>
+          className={cx("flex min-h-[30px] min-w-0 items-center justify-center rounded-sm px-0.5 py-0.5 text-center text-[10.5px] leading-tight disabled:opacity-35", columns ? "" : "flex-1", value === id ? "bg-accent/20 text-accent" : "text-mute hover:bg-raised hover:text-ink")}>
+          <span>{text}</span>
         </button>
       ))}
     </div>
@@ -134,11 +138,11 @@ export function Section({ title, children, defaultOpen = true }) {
 
 export function Row({ label, hint, children }) {
   return (
-    <div className="grid grid-cols-[80px_1fr] items-start gap-2 py-1.5">
-      <div className="pt-2 text-xs text-mute">{label}</div>
+    <div className="grid grid-cols-[60px_minmax(0,1fr)] items-start gap-1.5 py-1">
+      <div className="pt-1.5 text-2xs text-mute">{label}</div>
       <div className="min-w-0">
         {children}
-        {hint && <p className="mt-1 text-2xs leading-4 text-faint">{hint}</p>}
+        {hint && <p className="mt-0.5 text-[10.5px] leading-[14px] text-faint">{hint}</p>}
       </div>
     </div>
   );
@@ -147,9 +151,9 @@ export function Row({ label, hint, children }) {
 export function Note({ severity = "info", children }) {
   const tone = severity === "error" ? "text-err" : severity === "warning" ? "text-warn" : "text-mute";
   return (
-    <div className="flex gap-2 rounded border border-line bg-bg p-2" role="status">
-      <Icon name={severity === "info" ? "info" : "alert"} size={15} className={cx("mt-0.5 flex-none", tone)} />
-      <p className="text-sm leading-[18px] text-ink">{children}</p>
+    <div className="flex gap-1.5 rounded border border-line bg-bg px-2 py-1.5" role="status">
+      <Icon name={severity === "info" ? "info" : "alert"} size={14} className={cx("mt-px flex-none", tone)} />
+      <p className="text-xs leading-4 text-ink">{children}</p>
     </div>
   );
 }

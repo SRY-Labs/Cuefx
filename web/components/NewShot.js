@@ -34,6 +34,7 @@ export default function NewShot({ initialClip, onBack, onReady }) {
   const [busy, setBusy] = useState(false);
   const [, setClockTick] = useState(0);
   const fileInput = useRef(null);
+  const trackError = useRef(null);
 
   useEffect(() => { listClips().then(setClips).catch(() => setClips([])); }, []);
 
@@ -42,6 +43,10 @@ export default function NewShot({ initialClip, onBack, onReady }) {
     const timer = setInterval(() => setClockTick((value) => value + 1), 1000);
     return () => clearInterval(timer);
   }, [stage, upload?.phase]);
+
+  useEffect(() => {
+    if (error && stage === "pick") trackError.current?.scrollIntoView({ block: "nearest" });
+  }, [error, stage]);
 
   useEffect(() => {
     function onKey(event) {
@@ -161,12 +166,11 @@ export default function NewShot({ initialClip, onBack, onReady }) {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="relative flex min-w-0 flex-1 flex-col gap-3 p-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
             <Plate clip={clip} frame={frame} playing={false} onClick={stage === "pick" ? startTrack : null} cursor={stage === "pick" ? "crosshair" : "default"}>
               {track && <polyline points={track.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="rgb(var(--c-track))" strokeWidth="2" opacity="0.7" />}
               {here && <circle cx={here.x} cy={here.y} r="14" fill="rgb(var(--c-track) / 0.25)" stroke="rgb(var(--c-track))" strokeWidth="3" />}
             </Plate>
-            {error && stage === "pick" && <div className="absolute left-1/2 top-8 w-[420px] max-w-[90%] -translate-x-1/2"><Alert error={error}>Tracking stopped</Alert></div>}
             <div className="flex items-center gap-2">
               <Btn variant="ghost" onClick={() => setFrame((value) => Math.max(0, value - 1))} disabled={busy}>←</Btn>
               <input type="range" className="flex-1" min={0} max={clip.frames - 1} value={frame} disabled={busy} onChange={(event) => setFrame(Number(event.target.value))} />
@@ -217,6 +221,7 @@ export default function NewShot({ initialClip, onBack, onReady }) {
               </>
             )}
             <Btn variant="ghost" onClick={() => { setStage("empty"); setCreated(null); setError(null); }}>Replace clip</Btn>
+            {error && stage === "pick" && <div ref={trackError}><Alert error={error} icon="alert">Tracking stopped</Alert></div>}
           </aside>
         </div>
       )}
