@@ -45,3 +45,11 @@ class GenerationIn(BaseModel):
     job_id: str
     prompt: str
     seed: int | None = None
+
+
+class VideoIn(BaseModel):
+    """A finished reference still and the prompt for the LTX video."""
+    model_config = ConfigDict(extra="forbid")
+    generation_id: str
+    prompt: str
+    seed: int | None = None
