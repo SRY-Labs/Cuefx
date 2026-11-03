@@ -24,7 +24,7 @@ const TAKES = {
 };
 
 const STEPS = [
-  { icon: "upload", title: "Upload a clip", body: "Up to 15 s, one person in frame", tone: "text-ink" },
+  { icon: "upload", title: "Upload a clip", body: "Up to 15 s, one person", tone: "text-ink" },
   { icon: "target", title: "Check the tracking", body: "MediaPipe follows the body", tone: "text-track" },
   { icon: "route", title: "Direct and render", body: "Draw the path, pick a look", tone: "text-path" },
 ];
@@ -86,19 +86,19 @@ function Hero({ onSample, onNew }) {
  */
 function Steps() {
   return (
-    <div className="mt-2 w-full rounded-[14px] border border-line bg-panel p-5">
-      <p className="t-overline mb-4 text-faint">How it works</p>
-      <ol className="relative grid grid-cols-1 gap-5 sm:grid-cols-3 sm:gap-4">
-        <span aria-hidden="true" className="absolute top-[18px] bottom-[18px] left-[18px] w-px bg-line2 sm:hidden" />
-        <span aria-hidden="true" className="absolute top-[18px] left-[18px] hidden h-px bg-line2 sm:block" style={{ right: "calc((100% - 32px) / 3 - 18px)" }} />
+    <div className="mt-2 w-full max-w-[520px]">
+      <p className="t-overline mb-3 text-faint">How it works</p>
+      <ol className="relative grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-4">
+        <span aria-hidden="true" className="absolute top-[14px] bottom-[14px] left-[14px] w-px bg-line2 sm:hidden" />
+        <span aria-hidden="true" className="absolute top-[14px] left-[14px] hidden h-px bg-line2 sm:block" style={{ right: "calc((100% - 32px) / 3 - 14px)" }} />
         {STEPS.map((step) => (
-          <li key={step.title} className="relative flex items-start gap-3 sm:flex-col sm:gap-3">
-            <span className={cx("relative grid h-9 w-9 flex-none place-items-center rounded-full border border-line2 bg-bg", step.tone)}>
-              <Icon name={step.icon} size={16} />
+          <li key={step.title} className="relative flex items-start gap-3 sm:flex-col sm:gap-2">
+            <span className={cx("relative grid h-7 w-7 flex-none place-items-center rounded-full border border-line2 bg-bg", step.tone)}>
+              <Icon name={step.icon} size={13} />
             </span>
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-sm font-medium text-ink">{step.title}</span>
-              <span className="text-[13px] leading-[18px] text-faint">{step.body}</span>
+            <span className="flex min-w-0 flex-col">
+              <span className="text-[13px] leading-[18px] font-medium text-ink">{step.title}</span>
+              <span className="text-xs leading-4 text-faint">{step.body}</span>
             </span>
           </li>
         ))}
