@@ -1,21 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { artifactUrl, jobResult, pollGeneration, pollJob, startGeneration, startJob } from "../lib/api";
+import { artifactUrl, jobResult, pollGeneration, pollJob, pollVideo, startGeneration, startJob, startVideo } from "../lib/api";
 import { lookById } from "../lib/cue";
 import MediaLoading, { useMediaLoading } from "./MediaLoading";
 import { Alert, Btn, Icon } from "./ui";
+
+const LTX_PROMPT = "One luminous energy orb in the original room with the person visible, matching the supplied look image and following the guide video's orb position, scale, and motion. Preserve the original scene. In reversed time the orb contracts and dims toward clean source frames.";
+
+const promptField = "w-full resize-none rounded-[10px] border border-line bg-field px-3 py-2 text-sm font-normal text-ink focus:border-accent";
+
+function downloadHref(url) {
+  return `${url}${url.includes("?") ? "&" : "?"}download=true`;
+}
 
 export default function StandinPanel({ clip, cue, onClose }) {
   const [job, setJob] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [prompt, setPrompt] = useState(() => cue.prompt || lookById(cue.look).prompt || "");
-  const [generation, setGeneration] = useState(null);
-  const [genError, setGenError] = useState(null);
-  const genFlight = useRef(null);
+  const [stillPrompt, setStillPrompt] = useState(() => cue.prompt || lookById(cue.look).prompt || "");
+  const [still, setStill] = useState(null);
+  const [stillError, setStillError] = useState(null);
+  const [ltxPrompt, setLtxPrompt] = useState(LTX_PROMPT);
+  const [video, setVideo] = useState(null);
+  const [videoError, setVideoError] = useState(null);
   const [started] = useState(() => performance.now());
+  const [stillStarted, setStillStarted] = useState(null);
+  const [videoStarted, setVideoStarted] = useState(null);
   const [now, setNow] = useState(() => performance.now());
+  const stillPoll = useRef(null);
+  const videoPoll = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -33,104 +47,191 @@ export default function StandinPanel({ clip, cue, onClose }) {
         setResult(await jobResult(done.id));
       })
       .catch((err) => { if (!gone && !err?.aborted) setError(err); });
-    return () => { gone = true; controller.abort(); genFlight.current?.abort(); };
+    return () => {
+      gone = true;
+      controller.abort();
+      stillPoll.current?.abort();
+      videoPoll.current?.abort();
+    };
   }, [clip.clip_id, cue]);
 
   const elapsed = Math.round((now - started) / 1000);
   const preview = artifactUrl(job, "hardcomp");
   const download = artifactUrl(job, "hardcomp", true);
   const previewLoading = useMediaLoading(preview);
-  const running = !error && job?.status !== "done";
-  const generating = generation && generation.status !== "done" && generation.status !== "failed";
+  const stillUrl = still?.status === "done" ? still.reference : null;
+  const stillLoading = useMediaLoading(stillUrl);
+  const videoUrl = video?.status === "done" ? video.video : null;
+  const videoLoading = useMediaLoading(videoUrl);
+  const standinRunning = !error && job?.status !== "done";
+  const stillRunning = still && still.status !== "done" && still.status !== "failed" && !stillError;
+  const videoRunning = video && video.status !== "done" && video.status !== "failed" && !videoError;
+  const ticking = standinRunning || stillRunning || videoRunning;
+  const plateReady = job?.status === "done" && !error;
 
   useEffect(() => {
-    if (!running && !generating) return undefined;
+    if (!ticking) return undefined;
     const timer = setInterval(() => setNow(performance.now()), 1000);
     return () => clearInterval(timer);
-  }, [running, generating]);
+  }, [ticking]);
 
-  async function generate() {
-    if (!job?.id || job.status !== "done" || !prompt.trim()) return;
-    genFlight.current?.abort();
+  async function generateStill() {
+    if (!job?.id || !plateReady || !stillPrompt.trim() || stillRunning) return;
+    stillPoll.current?.abort();
     const controller = new AbortController();
-    genFlight.current = controller;
-    setGenError(null);
-    setGeneration({ status: "queued", startedAt: performance.now() });
+    stillPoll.current = controller;
+    setStillError(null);
+    setVideo(null);
+    setVideoError(null);
+    setStill({ status: "queued" });
+    setStillStarted(performance.now());
     try {
-      const first = await startGeneration(job.id, prompt.trim(), controller.signal);
-      const startedAt = performance.now();
-      const done = await pollGeneration(first.id, { signal: controller.signal, onUpdate: (doc) => setGeneration({ ...doc, startedAt }) });
-      if (done.status === "failed") setGenError(done.error || { code: "generation_failed", message: "ComfyUI did not return a frame." });
+      const first = await startGeneration(job.id, stillPrompt.trim(), controller.signal);
+      const done = await pollGeneration(first.id, {
+        signal: controller.signal,
+        onGeneration: (next) => { if (!controller.signal.aborted) setStill(next); },
+      });
+      if (!controller.signal.aborted) setStill(done);
     } catch (err) {
-      if (!err?.aborted) { setGenError(err); setGeneration(null); }
+      if (!err?.aborted) setStillError(err);
     }
   }
 
-  const genSeconds = generation?.startedAt ? Math.round((now - generation.startedAt) / 1000) : 0;
+  async function renderLtx() {
+    if (!stillUrl || !still?.id || !ltxPrompt.trim() || videoRunning) return;
+    videoPoll.current?.abort();
+    const controller = new AbortController();
+    videoPoll.current = controller;
+    setVideoError(null);
+    setVideo({ status: "queued" });
+    setVideoStarted(performance.now());
+    try {
+      const first = await startVideo(job.id, { generation_id: still.id, prompt: ltxPrompt.trim() }, controller.signal);
+      const done = await pollVideo(first.id, {
+        signal: controller.signal,
+        onVideo: (next) => { if (!controller.signal.aborted) setVideo(next); },
+      });
+      if (!controller.signal.aborted) setVideo(done);
+    } catch (err) {
+      if (!err?.aborted) setVideoError(err);
+    }
+  }
+
+  const stillSeconds = stillStarted == null ? 0 : Math.round((now - stillStarted) / 1000);
+  const videoSeconds = videoStarted == null ? 0 : Math.round((now - videoStarted) / 1000);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-start gap-6 overflow-y-auto overflow-x-hidden bg-bg p-4 sm:p-6 min-[900px]:flex-row" role="region" aria-label="Preview render">
-      <div className="flex h-fit w-full min-w-0 max-w-[980px] flex-1 flex-col gap-3 rounded-[14px] border border-line bg-panel p-5 min-[900px]:flex-[0_1_980px]">
-        <div className="flex items-center gap-2">
-          <h2 className="t-h3">Preview on your footage</h2>
-          <span className="flex-1" />
-          <Btn variant="ghost" icon="sliders" onClick={onClose}>Back to directing</Btn>
-        </div>
-        {running && (
-          <div className="flex flex-col items-center gap-2 py-12" role="status">
-            <Icon name="loader" size={28} className="spin text-accent" />
-            <div className="t-h3 tnum">{job?.status === "queued" ? "Waiting for the render queue" : "Rendering your preview"} · {elapsed} s</div>
-            <div className="text-sm text-mute">A new shot usually takes 20 to 60 seconds. One render runs at a time.</div>
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-bg p-4 sm:p-6" role="region" aria-label="Render">
+      <div className="flex flex-none items-center gap-2">
+        <h2 className="t-h3">Render</h2>
+        <span className="hidden text-sm text-mute sm:inline">Preview, then the reference frame, then the LTX video</span>
+        <span className="flex-1" />
+        <Btn variant="ghost" icon="sliders" onClick={onClose}>Back to directing</Btn>
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto min-[1100px]:grid-cols-3 min-[1100px]:overflow-hidden">
+        <section className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto rounded-[14px] border border-line bg-panel p-5" aria-label="Preview">
+          <div className="flex flex-col gap-1">
+            <h3 className="t-h3">Preview on your footage</h3>
+            <p className="text-sm text-mute">The guide pass: the effect drawn in code where you directed it.</p>
           </div>
-        )}
-        {error && <Alert error={error} action={<Btn variant="primary" onClick={onClose}>Back to directing</Btn>}>The preview could not be rendered</Alert>}
-        {job?.status === "done" && !error && (
-          <>
-            {preview && (
-              <div className="relative aspect-video w-full overflow-hidden rounded-[10px] bg-well">
-                <video key={previewLoading.attempt} src={preview} controls autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-contain" {...previewLoading.handlers} />
-                <MediaLoading status={previewLoading} />
-              </div>
-            )}
+          {standinRunning && (
+            <div className="flex flex-col items-center gap-2 py-8" role="status">
+              <Icon name="loader" size={28} className="spin text-accent" />
+              <div className="text-center t-h3 tnum">{job?.status === "queued" ? "Waiting for the render queue" : "Rendering your preview"} · {elapsed} s</div>
+              <div className="text-center text-sm text-mute">A new shot usually takes 20 to 60 seconds. One render runs at a time.</div>
+            </div>
+          )}
+          {error && <Alert error={error} action={<Btn variant="primary" onClick={onClose}>Back to directing</Btn>}>The preview could not be rendered</Alert>}
+          {plateReady && preview && (
+            <div className="relative aspect-video w-full overflow-hidden rounded-[10px] bg-well">
+              <video key={previewLoading.attempt} src={preview} controls autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-contain" {...previewLoading.handlers} />
+              <MediaLoading status={previewLoading} />
+            </div>
+          )}
+          {plateReady && (
             <div className="flex flex-wrap items-center gap-3">
               <p className="flex-1 text-sm text-mute tnum">
-                This is the guide pass: the effect drawn in code where you directed it.
-                {result?.timings_s?.total ? ` Rendered in ${Math.round(result.timings_s.total)} s.` : ""}
+                {result?.timings_s?.total ? `Rendered in ${Math.round(result.timings_s.total)} s.` : "Preview ready."}
                 {result?.cached ? " Reused from an earlier render." : ""}
               </p>
               {download && <a href={download} className="inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-line2 bg-panel px-3 text-sm font-medium hover:bg-raised"><Icon name="download" size={14} />Download</a>}
             </div>
-          </>
-        )}
-      </div>
-      <aside className="h-fit w-full flex-none overflow-hidden rounded-[14px] border border-line bg-panel min-[900px]:w-[360px]" aria-labelledby="standin-prompt-title">
-        <div className="flex flex-col gap-1 border-b border-line px-5 py-4">
-          <h2 id="standin-prompt-title" className="t-h3">Style it with ComfyUI</h2>
-          <p className="text-sm text-mute">CueFX sends a frame of your preview and this prompt to ComfyUI and returns the styled frame LTX-2.5 animates from.</p>
-        </div>
-        <div className="flex flex-col gap-3 p-5">
-          <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor="standin-prompt">
-            Prompt
-            <textarea id="standin-prompt" rows={5} value={prompt} onChange={(event) => setPrompt(event.target.value)}
-              placeholder="The effect, its material and colours. What happens over time, camera stays fixed."
-              className="w-full resize-none rounded-[10px] border border-line bg-field px-3 py-2 text-sm font-normal text-ink focus:border-accent" />
-          </label>
-          <Btn variant="primary" icon="orb" className="w-full justify-center" disabled={job?.status !== "done" || !!error || !prompt.trim() || generating} onClick={generate}>
-            {generating ? `Styling · ${genSeconds} s` : generation?.status === "done" ? "Style again" : "Style this shot"}
-          </Btn>
-          {job?.status !== "done" && !error && <p className="text-xs text-faint">Available once the preview has rendered.</p>}
-          {genError && <Alert error={genError}>ComfyUI did not return a frame</Alert>}
-          {generation?.status === "done" && generation.reference && (
+          )}
+        </section>
+
+        <section className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto rounded-[14px] border border-line bg-panel p-5" aria-labelledby="reference-title">
+          <h3 id="reference-title" className="t-h3">Reference frame</h3>
+          {stillRunning && (
+            <div className="flex flex-col items-center gap-2 py-8" role="status">
+              <Icon name="loader" size={28} className="spin text-accent" />
+              <div className="text-center t-h3 tnum">{still.status === "queued" ? "Waiting for the image deployment" : "Generating the reference frame"} · {stillSeconds} s</div>
+            </div>
+          )}
+          {stillError && <Alert error={stillError}>The reference frame could not be generated</Alert>}
+          {still?.status === "failed" && <Alert error={still.error}>The reference frame could not be generated</Alert>}
+          {stillUrl ? (
             <figure className="flex flex-col gap-2">
-              <img src={generation.reference} alt="The styled frame returned by ComfyUI" className="w-full rounded-[10px] bg-well" />
-              <figcaption className="flex items-center justify-between text-xs text-mute">
-                <span>Styled frame from ComfyUI</span>
-                <a href={generation.reference} download="cuefx-styled-frame.png" className="font-medium text-accent hover:underline">Download</a>
+              <div className="relative aspect-video w-full overflow-hidden rounded-[10px] bg-well">
+                <img key={stillLoading.attempt} src={stillUrl} alt="Reference frame" className="absolute inset-0 h-full w-full object-contain" {...stillLoading.handlers} />
+                <MediaLoading status={stillLoading} label="Loading reference frame…" />
+              </div>
+              <figcaption className="flex items-center justify-between gap-2 text-xs text-mute">
+                <span>From ComfyUI</span>
+                <a href={stillUrl} download="cuefx-reference.png" className="font-medium text-accent hover:underline">Download</a>
               </figcaption>
             </figure>
+          ) : !stillRunning && (
+            <div className="grid aspect-video w-full place-items-center rounded-[10px] bg-well px-4 text-center text-sm text-mute">The styled frame shows here.</div>
           )}
-        </div>
-      </aside>
+          <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor="reference-prompt">
+            Prompt
+            <textarea id="reference-prompt" rows={4} value={stillPrompt} onChange={(event) => setStillPrompt(event.target.value)}
+              placeholder="The effect, its material and colours. What happens over time, camera stays fixed."
+              className={promptField} />
+          </label>
+          <Btn variant="primary" icon="orb" className="w-full justify-center" disabled={!plateReady || !stillPrompt.trim() || stillRunning} onClick={generateStill}>
+            {stillRunning ? `Styling · ${stillSeconds} s` : stillUrl ? "Style again" : "Style this frame"}
+          </Btn>
+          {!plateReady && !error && <p className="text-xs text-faint">Available once the preview has rendered.</p>}
+        </section>
+
+        <section className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto rounded-[14px] border border-line bg-panel p-5" aria-labelledby="ltx-title">
+          <h3 id="ltx-title" className="t-h3">LTX video</h3>
+          {videoRunning && (
+            <div className="flex flex-col items-center gap-2 py-8" role="status">
+              <Icon name="loader" size={28} className="spin text-accent" />
+              <div className="text-center t-h3 tnum">{video.status === "queued" ? "Waiting for the video deployment" : "Rendering LTX"} · {videoSeconds} s</div>
+              <div className="text-center text-sm text-mute">A full window can take several minutes.</div>
+            </div>
+          )}
+          {videoError && <Alert error={videoError}>The LTX video could not be rendered</Alert>}
+          {video?.status === "failed" && <Alert error={video.error}>The LTX video could not be rendered</Alert>}
+          {videoUrl ? (
+            <figure className="flex flex-col gap-2">
+              <div className="relative aspect-video w-full overflow-hidden rounded-[10px] bg-well">
+                <video key={videoLoading.attempt} src={videoUrl} controls autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-contain" {...videoLoading.handlers} />
+                <MediaLoading status={videoLoading} />
+              </div>
+              <figcaption className="flex items-center justify-between gap-2 text-xs text-mute">
+                <span>LTX video</span>
+                <a href={downloadHref(videoUrl)} className="inline-flex items-center gap-1.5 font-medium text-accent hover:underline"><Icon name="download" size={14} />Download</a>
+              </figcaption>
+            </figure>
+          ) : !videoRunning && (
+            <div className="grid aspect-video w-full place-items-center rounded-[10px] bg-well px-4 text-center text-sm text-mute">The LTX video shows here.</div>
+          )}
+          <label className="flex flex-col gap-1.5 text-sm font-medium" htmlFor="ltx-prompt">
+            Prompt
+            <textarea id="ltx-prompt" rows={4} value={ltxPrompt} onChange={(event) => setLtxPrompt(event.target.value)}
+              placeholder="What the video should do"
+              className={promptField} />
+          </label>
+          <Btn variant="primary" icon="play" className="w-full justify-center" disabled={!stillUrl || !ltxPrompt.trim() || videoRunning} onClick={renderLtx}>
+            {videoRunning ? `Rendering · ${videoSeconds} s` : videoUrl ? "Render again" : "Render LTX"}
+          </Btn>
+          {!stillUrl && <p className="text-xs text-faint">Available once the reference frame is ready.</p>}
+        </section>
+      </div>
     </div>
   );
 }

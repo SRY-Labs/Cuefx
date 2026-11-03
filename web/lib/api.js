@@ -172,11 +172,24 @@ export async function pollElement(jobId, { signal, onJob } = {}) {
 export const startGeneration = (jobId, prompt, signal) => request("POST", "/api/v1/generations", { json: { job_id: jobId, prompt }, signal });
 export const getGeneration = (id, signal) => request("GET", `/api/v1/generations/${id}`, { signal });
 
-export async function pollGeneration(id, { signal, onUpdate } = {}) {
+export async function pollGeneration(id, { signal, onUpdate, onGeneration } = {}) {
   for (;;) {
     const doc = await getGeneration(id, signal);
     if (onUpdate) onUpdate(doc);
+    if (onGeneration) onGeneration(doc);
     if (doc.status === "done" || doc.status === "failed") return doc;
-    await delay(2000, signal);
+    await delay(1500, signal);
+  }
+}
+
+export const startVideo = (jobId, body, signal) => request("POST", `/api/v1/jobs/${jobId}/video`, { json: body, signal });
+export const getVideo = (videoId, signal) => request("GET", `/api/v1/videos/${videoId}`, { signal });
+
+export async function pollVideo(videoId, { signal, onVideo } = {}) {
+  for (;;) {
+    const video = await getVideo(videoId, signal);
+    if (onVideo) onVideo(video);
+    if (video.status === "done" || video.status === "failed") return video;
+    await delay(1500, signal);
   }
 }

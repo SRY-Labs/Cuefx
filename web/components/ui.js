@@ -93,19 +93,25 @@ export function Field({ label, children }) {
 }
 
 export function Num({ value, min, max, step = 1, onChange, disabled }) {
+  const [text, setText] = useState(null);
   return (
     <input
       type="number"
-      className="h-7 w-full min-w-0 rounded border border-line bg-field px-1.5 text-xs text-ink tnum disabled:opacity-40"
-      value={value ?? ""}
+      inputMode="decimal"
+      className="h-7 w-full min-w-[4.5rem] rounded border border-line bg-field px-1.5 text-xs text-ink tnum disabled:opacity-40"
+      value={text ?? value ?? ""}
       min={min}
       max={max}
       step={step}
       disabled={disabled}
       onChange={(event) => {
-        const next = Number(event.target.value);
+        const raw = event.target.value;
+        setText(raw);
+        if (raw === "" || raw === "-" || raw === "." || raw === "-.") return;
+        const next = Number(raw);
         if (Number.isFinite(next)) onChange(next);
       }}
+      onBlur={() => setText(null)}
     />
   );
 }

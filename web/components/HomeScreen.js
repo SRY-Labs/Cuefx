@@ -15,7 +15,7 @@ const PHASES = [
   { id: "flight", label: "Flight", from: 100, to: 214, tone: "bg-path/20 text-path", dot: "bg-path" },
   { id: "burst", label: "Burst", from: 214, to: 240, tone: "bg-occ/25 text-occ", dot: "bg-occ" },
 ];
-const PATH = HERO_PATH.filter(([f]) => f <= 214);
+const PATH = HERO_PATH;
 const KEYS = PATH.filter((_, index) => index % 12 === 0);
 
 const TAKES = {
@@ -197,7 +197,7 @@ function Monitor() {
   const phase = PHASES.find((item) => frame >= item.from && frame < item.to) || PHASES[0];
   const travelled = PATH.filter(([f]) => f <= frame);
   const here = travelled[travelled.length - 1];
-  const live = here && frame <= 214;
+  const live = here && frame <= PATH[PATH.length - 1][0];
   const line = (points) => points.map(([, x, y]) => `${(x * 160).toFixed(2)},${(y * 90).toFixed(2)}`).join(" ");
   const showHud = directed && hud;
 
