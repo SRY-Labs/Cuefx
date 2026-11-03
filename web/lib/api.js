@@ -44,10 +44,9 @@ export const listClips = () => request("GET", "/api/v1/clips");
 export const frameUrl = (clipId, frame) => `/api/v1/clips/${clipId}/frames/${frame}`;
 export const videoUrl = (clipId) => `/api/v1/clips/${clipId}/video`;
 
-// Same bounds as the server defaults: config.Settings.max_upload_mb and cue.api.MAX_CLIP_FRAMES (24 fps).
+// Same bounds as the server: config.Settings.max_upload_mb and clips.store.UPLOAD_MAX_SECONDS.
 export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
-export const MAX_CLIP_FRAMES = 1440;
-export const MAX_CLIP_SECONDS = MAX_CLIP_FRAMES / 24;
+export const MAX_UPLOAD_SECONDS = 15;
 
 function uploadFailure(status, text) {
   let body = null;
@@ -57,7 +56,7 @@ function uploadFailure(status, text) {
   if (!status || status === 408 || status === 502 || status === 503 || status === 504) {
     return {
       code: "server_lost",
-      message: "The connection closed while CueFX was still preparing the clip. Trim it to a minute or less and try again.",
+      message: "The connection closed while CueFX was still preparing the clip. Trim it to 15 seconds or less and try again.",
       status,
     };
   }
@@ -94,10 +93,10 @@ export async function clipUploadIssue(file) {
     return { code: "input_invalid", message: `This file is ${mb} MB. CueFX takes up to ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.`, status: 413 };
   }
   const seconds = await mediaDuration(file);
-  if (seconds != null && seconds * 24 > MAX_CLIP_FRAMES) {
+  if (seconds != null && seconds > MAX_UPLOAD_SECONDS) {
     return {
       code: "clip_too_long",
-      message: `This clip is ${Math.ceil(seconds)} seconds. CueFX takes up to ${MAX_CLIP_SECONDS} seconds. Trim it to the part you want.`,
+      message: `This clip is ${Math.ceil(seconds)} seconds. CueFX takes up to ${MAX_UPLOAD_SECONDS} seconds. Trim it to the part you want.`,
     };
   }
   return null;

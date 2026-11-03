@@ -123,7 +123,7 @@ export default function NewShot({ initialClip, onBack, onReady }) {
                 <>
                   <div className="mt-3 h-1.5 overflow-hidden rounded bg-field"><div className="bar-processing h-full w-full" /></div>
                   <p className="mt-2 text-sm text-ink tnum">Preparing the plate · {clock(Date.now() - upload.started)}</p>
-                  <p className="mt-1 text-xs text-mute">The file is in. CueFX is building the 24 fps plate, which is the slow step. A clip over a minute is refused once it has been measured.</p>
+                  <p className="mt-1 text-xs text-mute">The file is in. CueFX is building the 24 fps plate, which is the slow step. A clip over 15 seconds is refused once it has been measured.</p>
                 </>
               ) : upload.phase === "check" ? (
                 <p className="mt-2 text-xs text-mute">Checking length and size…</p>
@@ -155,7 +155,7 @@ export default function NewShot({ initialClip, onBack, onReady }) {
           {stage !== "uploading" && (
             <p className="flex items-start gap-1.5 text-2xs text-faint">
               <Icon name="info" size={12} className="mt-px flex-none" />
-              <span>CueFX takes clips up to 60 seconds and 500 MB. Anything past that is refused before the upload.</span>
+              <span>CueFX takes clips up to 15 seconds and 500 MB. Anything past that is refused before the upload.</span>
             </p>
           )}
         </div>

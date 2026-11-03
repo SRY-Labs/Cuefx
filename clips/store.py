@@ -27,6 +27,8 @@ from errors import ApiError, invalid, not_found
 log = logging.getLogger("cuefx.server")
 
 ID_RE = re.compile(r"^[0-9a-f]{12}$")
+UPLOAD_MAX_SECONDS = 15  # refused before the plate is built; the plate is 24 fps
+UPLOAD_MAX_FRAMES = UPLOAD_MAX_SECONDS * 24
 PLATE_SIZE = (1920, 1080)
 PLATE_NAME = "plate.mp4"  # the conformed plate in <cache>/<id>/
 CHUNK = 1 << 20
@@ -175,14 +177,14 @@ class ClipStore:
                 return self.info(clip_id), False
             try:
                 src = self._source(tmp)  # unreadable / too long are refused before anything is kept
-                if (est := conform.estimated_frames(src)) > api.MAX_CLIP_FRAMES:
-                    raise ApiError(*_too_long(est))
+                if (est := conform.estimated_frames(src)) > UPLOAD_MAX_FRAMES:
+                    raise ApiError(*_too_long(est, UPLOAD_MAX_FRAMES))
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 tmp.replace(dest)
                 try:
                     info = self._info(clip_id, dest.name, self.plate(clip_id))  # conforms here, once
-                    if info["frames"] > api.MAX_CLIP_FRAMES:  # the limit again, on the conformed frame count
-                        raise ApiError(*_too_long(info["frames"]))
+                    if info["frames"] > UPLOAD_MAX_FRAMES:  # the limit again, on the conformed frame count
+                        raise ApiError(*_too_long(info["frames"], UPLOAD_MAX_FRAMES))
                 except Exception:
                     shutil.rmtree(dest.parent, ignore_errors=True)
                     shutil.rmtree(self.s.cache_dir / clip_id, ignore_errors=True)
@@ -409,9 +411,9 @@ def _write_atomic(path: Path, data: bytes) -> None:
         part.unlink(missing_ok=True)
 
 
-def _too_long(frames: int) -> tuple[str, str, int]:
-    return ("clip_too_long", api.message("clip_too_long", frames=frames, max_frames=api.MAX_CLIP_FRAMES,
-                                         max_seconds=api.MAX_CLIP_FRAMES // 24), 400)
+def _too_long(frames: int, max_frames: int = UPLOAD_MAX_FRAMES) -> tuple[str, str, int]:
+    return ("clip_too_long", api.message("clip_too_long", frames=frames, max_frames=max_frames,
+                                         max_seconds=max_frames // 24), 400)
 
 
 _code_version: str | None = None
