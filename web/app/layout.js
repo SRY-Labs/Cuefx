@@ -9,6 +9,11 @@ const jakarta = localFont({ src: "./fonts/plus-jakarta-sans-latin-700.woff2", we
 export const metadata = {
   title: "CueFX · Make the effect follow the move",
   description: "Directed VFX on your own footage. CueFX tracks the body, you draw where the effect goes, ComfyUI and LTX render it.",
+  openGraph: {
+    title: "CueFX",
+    description: "Directed VFX on your own footage. CueFX tracks the body, you draw where the effect goes, ComfyUI and LTX render it.",
+    images: ["/cuefx-social.png"],
+  },
 };
 
 export default function RootLayout({ children }) {
