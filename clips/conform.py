@@ -33,6 +33,7 @@ class SourceInfo:
     rotation: int       # degrees, as ffmpeg applies it (0, 90, 180, 270)
     duration: float     # seconds, container or stream
     color_space: str    # ffprobe's name, "" if untagged
+    nb_frames: int = 0  # stream frame count, 0 when the container does not say
 
 
 def _fraction(text: str | None) -> float:
@@ -63,8 +64,10 @@ def probe_source(video: Path) -> SourceInfo:
     if rotation % 180 == 90:
         w, h = h, w
     duration = _fraction(s.get("duration")) or _fraction(doc.get("format", {}).get("duration"))
+    raw_frames = s.get("nb_frames")
+    nb_frames = int(raw_frames) if isinstance(raw_frames, str) and raw_frames.isdigit() else 0
     return SourceInfo(w, h, _fraction(s.get("r_frame_rate")), _fraction(s.get("avg_frame_rate")), rotation, duration,
-                      s.get("color_space", ""))
+                      s.get("color_space", ""), nb_frames)
 
 
 def is_plate(src: SourceInfo) -> bool:
@@ -90,8 +93,15 @@ def transform_for(src: SourceInfo) -> dict:
 
 
 def estimated_frames(src: SourceInfo) -> int:
-    """round(duration x 24): what the conformed plate will have (0 if the duration is unknown)."""
-    return round(src.duration * PLATE_FPS)
+    """Frames the conformed 24 fps plate will have, or 0 when the container does not say.
+
+    Duration is the real length. A container that omits duration still often stores a frame count; that count is
+    scaled by the average frame rate so a long clip is refused before ffmpeg builds the plate."""
+    if src.duration > 0:
+        return round(src.duration * PLATE_FPS)
+    if src.nb_frames > 0 and src.avg_fps > 0:
+        return round(src.nb_frames * PLATE_FPS / src.avg_fps)
+    return 0
 
 
 def _in_matrix(src: SourceInfo) -> str:

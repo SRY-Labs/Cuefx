@@ -1,12 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createCue, listClips, uploadClip } from "../lib/api";
+import { useEffect, useRef, useState } from "react";
+import { clipUploadIssue, createCue, listClips, uploadClip } from "../lib/api";
 import { clipLine, pointAt, timecode } from "../lib/cue";
 import Plate from "./Plate";
 import { Alert, Btn, Icon, Seg } from "./ui";
 
 const PARTS = [["palm", "Palm"], ["fist", "Fist"], ["foot", "Foot"], ["knee", "Knee"], ["shoulder", "Shoulder"], ["head", "Head"]];
+
+function clock(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function uploadTitle(error) {
+  if (error?.code === "clip_too_long") return "This clip is too long";
+  if (error?.status === 413) return "This file is too large";
+  if (error?.code === "clip_unreadable") return "CueFX could not read this clip";
+  if (error?.code === "server_lost") return "The upload did not finish";
+  return "That clip cannot be used";
+}
 
 export default function NewShot({ initialClip, onBack, onReady }) {
   const [stage, setStage] = useState(initialClip ? "pick" : "empty");
@@ -19,8 +32,16 @@ export default function NewShot({ initialClip, onBack, onReady }) {
   const [error, setError] = useState(null);
   const [created, setCreated] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [, setClockTick] = useState(0);
+  const fileInput = useRef(null);
 
   useEffect(() => { listClips().then(setClips).catch(() => setClips([])); }, []);
+
+  useEffect(() => {
+    if (stage !== "uploading" || upload?.phase !== "prepare") return undefined;
+    const timer = setInterval(() => setClockTick((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [stage, upload?.phase]);
 
   useEffect(() => {
     function onKey(event) {
@@ -35,9 +56,23 @@ export default function NewShot({ initialClip, onBack, onReady }) {
   async function onFile(file) {
     setError(null);
     setStage("uploading");
-    setUpload({ pct: 0, name: file.name });
+    setUpload({ phase: "check", name: file.name });
+    const issue = await clipUploadIssue(file);
+    if (issue) {
+      setError(issue);
+      setStage("empty");
+      return;
+    }
+    setUpload({ phase: "upload", pct: 0, name: file.name, started: Date.now() });
     try {
-      const next = await uploadClip(file, (progress) => setUpload({ pct: progress.pct, name: file.name }));
+      const next = await uploadClip(file, (progress) => {
+        setUpload((prev) => ({
+          ...prev,
+          ...progress,
+          name: file.name,
+          started: progress.phase === "prepare" && prev?.phase !== "prepare" ? Date.now() : prev?.started,
+        }));
+      });
       setClip(next);
       setFrame(Math.min(60, next.frames - 1));
       setCreated(null);
@@ -80,21 +115,31 @@ export default function NewShot({ initialClip, onBack, onReady }) {
       </header>
       {stage === "empty" || stage === "uploading" ? (
         <div className="mx-auto flex w-full max-w-[680px] flex-col gap-4 px-6 py-10">
-          {error && <Alert error={error}>That clip cannot be used</Alert>}
+          {error && <Alert error={error}>{uploadTitle(error)}</Alert>}
           {stage === "uploading" ? (
             <div className="rounded-lg border border-line bg-panel p-5" role="status">
               <div className="text-sm font-semibold">{upload.name}</div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded bg-field"><div className={`h-full ${upload.pct >= 100 ? "bar-processing" : "bg-accent"}`} style={{ width: `${upload.pct}%` }} /></div>
-              <div className="mt-1 text-xs text-mute tnum">
-                {upload.pct >= 100 ? "Processing… The file is in; CueFX is preparing the clip." : `Uploading · ${upload.pct}%. Conform starts when the file is in.`}
-              </div>
+              {upload.phase === "prepare" ? (
+                <>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded bg-field"><div className="bar-processing h-full w-full" /></div>
+                  <p className="mt-2 text-sm text-ink tnum">Preparing the plate · {clock(Date.now() - upload.started)}</p>
+                  <p className="mt-1 text-xs text-mute">The file is in. CueFX is building the 24 fps plate, which is the slow step. A clip over a minute is refused once it has been measured.</p>
+                </>
+              ) : upload.phase === "check" ? (
+                <p className="mt-2 text-xs text-mute">Checking length and size…</p>
+              ) : (
+                <>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded bg-field"><div className="h-full bg-accent" style={{ width: `${upload.pct ?? 0}%` }} /></div>
+                  <p className="mt-1 text-xs text-mute tnum">{upload.pct == null ? "Uploading…" : `Uploading · ${upload.pct}%`}</p>
+                </>
+              )}
             </div>
           ) : (
             <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-line2 bg-panel px-8 py-14 text-center">
               <Icon name="upload" size={22} className="text-accent" />
               <span className="text-sm font-semibold">Drop a clip, or choose a file</span>
               <span className="text-xs text-mute">mp4, mov, mkv, or webm</span>
-              <input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm" className="hidden" onChange={(event) => event.target.files?.[0] && onFile(event.target.files[0])} />
+              <input ref={fileInput} type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onFile(file); }} />
             </label>
           )}
           {clips.length > 0 && stage !== "uploading" && (
@@ -110,7 +155,7 @@ export default function NewShot({ initialClip, onBack, onReady }) {
           {stage !== "uploading" && (
             <p className="flex items-start gap-1.5 text-2xs text-faint">
               <Icon name="info" size={12} className="mt-px flex-none" />
-              <span>Tip: clips of about 15 seconds or less process fastest.</span>
+              <span>CueFX takes clips up to 60 seconds and 500 MB. Anything past that is refused before the upload.</span>
             </p>
           )}
         </div>
