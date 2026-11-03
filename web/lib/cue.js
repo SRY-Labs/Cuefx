@@ -15,9 +15,10 @@ export function seconds(frame, fps) {
 }
 
 export function timecode(frame, fps) {
-  const total = frame / fps;
-  const minutes = Math.floor(total / 60);
-  const secs = total - minutes * 60;
+  // Round to hundredths before splitting, so 59.999 s reads 1:00.00 and not 0:60.00
+  const hundredths = Math.round((frame / fps) * 100);
+  const minutes = Math.floor(hundredths / 6000);
+  const secs = (hundredths - minutes * 6000) / 100;
   return `${minutes}:${secs.toFixed(2).padStart(5, "0")}`;
 }
 

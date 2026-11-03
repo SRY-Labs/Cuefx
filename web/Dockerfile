@@ -38,6 +38,8 @@ ENV NODE_ENV=production \
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/package.json /app/next.config.mjs ./
 COPY --from=build --chown=1000:1000 /app/.next ./.next
+# `next start` serves public/ from disk; it is not bundled into .next
+COPY --from=build /app/public ./public
 
 # the base image's built-in "node" user is UID/GID 1000
 USER 1000:1000

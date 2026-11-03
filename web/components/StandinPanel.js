@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { artifactUrl, jobResult, pollElement, pollJob, startJob } from "../lib/api";
+import MediaLoading, { useMediaLoading } from "./MediaLoading";
 import { Alert, Btn, Icon } from "./ui";
 
 export default function StandinPanel({ clip, cue, onClose }) {
@@ -33,6 +34,7 @@ export default function StandinPanel({ clip, cue, onClose }) {
 
   const elapsed = Math.round((now - started) / 1000);
   const preview = artifactUrl(job, "hardcomp");
+  const previewLoading = useMediaLoading(preview);
   const running = !error && job?.status !== "done";
 
   useEffect(() => {
@@ -74,7 +76,12 @@ export default function StandinPanel({ clip, cue, onClose }) {
         {error && <Alert error={error} action={<Btn variant="primary" onClick={onClose}>Close</Btn>}>The stand-in could not be rendered</Alert>}
         {job?.status === "done" && !error && (
           <>
-            {preview && <video src={preview} controls autoPlay loop muted playsInline className="w-full rounded bg-black" />}
+            {preview && (
+              <div className="relative aspect-video w-full overflow-hidden rounded bg-well">
+                <video key={previewLoading.attempt} src={preview} controls autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-contain" {...previewLoading.handlers} />
+                <MediaLoading status={previewLoading} />
+              </div>
+            )}
             {result && (
               <div className="text-xs text-mute tnum">
                 Window {result.effect_range.start}–{result.effect_range.end - 1}

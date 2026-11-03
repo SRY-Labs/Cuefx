@@ -89,7 +89,7 @@ export default function Editor({ clip, created, onBack }) {
       if (pickerRef.current || event.target.closest("input, textarea, select, button")) return;
       if (event.key === "ArrowLeft") setFrame((value) => Math.max(0, value - (event.shiftKey ? 10 : 1)));
       if (event.key === "ArrowRight") setFrame((value) => Math.min(clip.frames - 1, value + (event.shiftKey ? 10 : 1)));
-      if (event.key === " ") { event.preventDefault(); setPlaying((value) => !value); }
+      if (event.key === " ") { event.preventDefault(); togglePlay(); }
       if ((event.key === "Delete" || event.key === "Backspace") && selected > 0) {
         event.preventDefault();
         const next = deletePathPoint(cueRef.current, selected);
@@ -100,6 +100,15 @@ export default function Editor({ clip, created, onBack }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [clip.frames, selected]);
+
+  const playhead = useRef({ frame, playing });
+  playhead.current = { frame, playing };
+
+  function togglePlay() {
+    const { frame: at, playing: on } = playhead.current;
+    if (!on && at >= clip.frames - 1) setFrame(0);
+    setPlaying(!on);
+  }
 
   function remember(next) {
     cueRef.current = next;
@@ -280,7 +289,7 @@ export default function Editor({ clip, created, onBack }) {
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="relative flex min-h-0 flex-1 flex-col p-3">
             {error && <Alert error={error}>The cue could not be checked</Alert>}
-            <Plate clip={clip} frame={frame} setFrame={setFrame} playing={playing} onClick={onPlate} svgRef={svgRef} onScale={onScale} cursor={tool === "draw" || clickPick ? "crosshair" : "default"}>
+            <Plate clip={clip} frame={frame} setFrame={setFrame} playing={playing} onEnded={() => setPlaying(false)} onClick={onPlate} svgRef={svgRef} onScale={onScale} cursor={tool === "draw" || clickPick ? "crosshair" : "default"}>
               {trail.length > 1 && (
                 <polyline points={trail.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="rgb(var(--c-track))" strokeWidth="2" strokeDasharray="2 5" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.85" />
               )}
@@ -318,7 +327,7 @@ export default function Editor({ clip, created, onBack }) {
             {notice && <p className="absolute bottom-16 left-1/2 w-[420px] max-w-[90%] -translate-x-1/2 rounded border border-warn/40 bg-panel px-3 py-2 text-sm text-warn" role="status">{notice}</p>}
           </div>
           <div className="flex h-10 flex-none items-center gap-2 border-t border-line px-3">
-            <button type="button" className="flex h-8 w-8 items-center justify-center rounded border border-line2 bg-raised" aria-label={playing ? "Pause" : "Play"} onClick={() => setPlaying((value) => !value)}>
+            <button type="button" className="flex h-8 w-8 items-center justify-center rounded border border-line2 bg-raised" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay}>
               <Icon name={playing ? "pause" : "play"} size={14} />
             </button>
             <span className="text-xs text-mute tnum">{frame} · {timecode(frame, clip.fps)}</span>
