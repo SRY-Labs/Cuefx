@@ -14,6 +14,7 @@ export default function Page() {
   const [shot, setShot] = useState(null);
   const [preset, setPreset] = useState(null);
   const [sample, setSample] = useState(false);
+  const [track, setTrack] = useState(null);
   const [server, setServer] = useState(null);
   const [theme, setTheme] = useState("dark");
 
@@ -33,11 +34,12 @@ export default function Page() {
     try { window.localStorage.setItem("cuefx-theme", next); } catch { /* storage can be blocked */ }
   }
 
-  function startFlow({ nextClip = null, presetId = null, useSample = false } = {}) {
+  function startFlow({ nextClip = null, presetId = null, presetObj = null, useSample = false, trackChoice = null } = {}) {
     setClip(nextClip);
     setShot(null);
-    setPreset(presetById(presetId));
+    setPreset(presetObj || presetById(presetId));
     setSample(useSample);
+    setTrack(trackChoice);
     setView("new");
   }
 
@@ -64,9 +66,7 @@ export default function Page() {
       <div className="min-h-0 flex-1 overflow-hidden">
         {view === "home" && (
           <HomeScreen
-            onNew={() => startFlow()}
-            onSample={() => startFlow({ useSample: true, presetId: "fireball_throw" })}
-            onPreset={(presetId) => startFlow({ presetId })}
+            onStart={({ useSample, preset: presetObj, track: trackChoice }) => startFlow({ useSample, presetObj, trackChoice })}
             onOpen={(next) => startFlow({ nextClip: next })}
           />
         )}
@@ -75,6 +75,7 @@ export default function Page() {
             initialClip={clip}
             preset={preset}
             sample={sample}
+            track={track}
             onBack={home}
             onReady={(nextClip, created) => { setClip(nextClip); setShot(created); setView("editor"); }}
           />

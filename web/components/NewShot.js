@@ -35,13 +35,13 @@ function uploadTitle(error) {
   return "That clip cannot be used";
 }
 
-export default function NewShot({ initialClip, preset, sample, onBack, onReady }) {
+export default function NewShot({ initialClip, preset, sample, track: chosen, onBack, onReady }) {
   const [stage, setStage] = useState(initialClip ? "pick" : "empty");
   const [clip, setClip] = useState(initialClip);
   const [clips, setClips] = useState([]);
   const [frame, setFrame] = useState(initialClip ? Math.min(60, initialClip.frames - 1) : 0);
-  const [hand, setHand] = useState(sample ? SAMPLE_CLIP.side : "right");
-  const [part, setPart] = useState(sample ? SAMPLE_CLIP.part : "fist");
+  const [hand, setHand] = useState(chosen?.side || (sample ? SAMPLE_CLIP.side : "right"));
+  const [part, setPart] = useState(chosen?.part || (sample ? SAMPLE_CLIP.part : "fist"));
   const [upload, setUpload] = useState(null);
   const [error, setError] = useState(null);
   const [created, setCreated] = useState(null);
@@ -68,7 +68,7 @@ export default function NewShot({ initialClip, preset, sample, onBack, onReady }
         if (!res.ok) throw new Error(String(res.status));
         return res.blob();
       });
-      await onFile(new File([blob], SAMPLE_CLIP.name, { type: "video/mp4" }), { autoTrack: true });
+      await onFile(new File([blob], SAMPLE_CLIP.name, { type: "video/mp4" }), { autoTrack: { part, side: hand } });
     } catch {
       setError({ code: "sample_unavailable", message: "The sample clip did not load. Upload your own clip, or try again." });
       setStage("empty");
@@ -119,7 +119,7 @@ export default function NewShot({ initialClip, preset, sample, onBack, onReady }
       setFrame(Math.min(60, next.frames - 1));
       setCreated(null);
       setStage("pick");
-      if (autoTrack) runTrack(next, null, { part: SAMPLE_CLIP.part, side: SAMPLE_CLIP.side });
+      if (autoTrack) runTrack(next, null, autoTrack);
     } catch (err) {
       setError(err);
       setStage("empty");

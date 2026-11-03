@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { listClips } from "../lib/api";
-import { clipLine } from "../lib/cue";
+import { LOOKS, clipLine } from "../lib/cue";
 import { HERO_FPS, HERO_FRAMES, HERO_PATH } from "../lib/heroPath";
-import { PRESETS } from "../lib/presets";
+import { BAR_BEHAVIOURS, BAR_PARTS, PRESETS, presetFrom } from "../lib/presets";
 import { LookStill } from "./LookPicker";
-import { Btn, Icon, cx } from "./ui";
+import { Icon, cx } from "./ui";
 
 // Phases of the directed showcase take, in frames at 30 fps (read off the video).
 const PHASES = [
@@ -20,94 +20,160 @@ const KEYS = PATH.filter((_, index) => index % 12 === 0);
 
 const TAKES = {
   directed: { src: "/showcase/4_output_web.mp4", poster: "/showcase/directed.jpg", note: "The effect holds the path drawn in CueFX." },
-  prompted: { src: "/showcase/2_problem_web.mp4", poster: "/showcase/prompted.jpg", note: "Prompt only: the effect leaves the hand." },
+  prompted: { src: "/showcase/2_problem_web.mp4", poster: "/showcase/prompted.jpg", note: "Prompt only: the effect leaves the body." },
 };
 
-const STEPS = [
-  { icon: "upload", title: "Upload a clip", body: "Up to 15 s, one person", tone: "text-ink" },
-  { icon: "target", title: "Check the tracking", body: "MediaPipe follows the body", tone: "text-track" },
-  { icon: "route", title: "Direct and render", body: "Draw the path, pick a look", tone: "text-path" },
+const CLIPS = [
+  { id: "sample", name: "Sample · rooftop kick", note: "Ready to go, no upload" },
+  { id: "upload", name: "Your clip", note: "Choose a file when you start" },
 ];
 
 const BEHAVIOUR_TAG = { hold_throw: "Hold + throw", charge_up: "Charge up", orbit: "Orbit", hold: "Hold" };
 const LOOK_GLOW = { fireball: "255 179 92", blue_plasma: "159 212 255", electric_orb: "214 200 255", ice_sphere: "223 244 255", shadow_energy: "154 115 230" };
 
-export default function HomeScreen({ onNew, onOpen, onSample, onPreset }) {
+export default function HomeScreen({ onStart, onOpen }) {
   const [clips, setClips] = useState(null);
+  const [setup, setSetup] = useState({ clip: "sample", track: 0, behaviour: "hold_throw", look: "blue_plasma" });
+  const top = useRef(null);
 
   useEffect(() => { listClips().then(setClips).catch(() => setClips([])); }, []);
 
+  function start() {
+    const look = LOOKS.find((item) => item.id === setup.look) || LOOKS[1];
+    const point = BAR_PARTS[setup.track] || BAR_PARTS[0];
+    onStart({
+      useSample: setup.clip === "sample",
+      preset: presetFrom({ behaviour: setup.behaviour, look: look.id, lookName: look.name }),
+      track: { part: point.part, side: point.side },
+    });
+  }
+
+  // A preset card fills the bar and brings it back into view, so there is one place where a shot is set up.
+  function applyPreset(preset) {
+    setSetup((current) => ({ ...current, behaviour: preset.behaviour, look: preset.look }));
+    top.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <main className="h-full overflow-y-auto bg-bg">
-      <Hero onSample={onSample} onNew={onNew} />
-      <div className="mx-auto flex max-w-[1280px] flex-col gap-12 px-4 pb-16 sm:px-6 lg:px-10">
-        <Presets onPreset={onPreset} />
+      <section ref={top} className="mx-auto flex max-w-[1200px] scroll-mt-4 flex-col items-center px-4 pt-12 pb-10 text-center sm:px-6 sm:pt-16">
+        <span className="inline-flex h-7 items-center gap-2 rounded-full border border-line2 px-3 t-overline text-mute">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          Directed VFX · ComfyUI + LTX-2.5
+        </span>
+        <h1 className="hero-title mt-5 max-w-[900px] text-ink">Direct the effect.<br />Don&apos;t just prompt it.</h1>
+        <p className="mt-4 max-w-[620px] text-[17px] leading-[26px] text-mute">
+          CueFX tracks the body in your clip, lets you draw where the effect goes, and renders it on your footage. The shot below is set up and ready.
+        </p>
+        <DirectBar setup={setup} setSetup={setSetup} onStart={start} />
+        <p className="mt-3 text-[13px] text-faint">Up to 15 seconds · one person in frame · about a minute to a first preview</p>
+      </section>
+
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-14 px-4 pb-16 sm:px-6">
+        <Monitor />
+        <Presets onPreset={applyPreset} />
         {clips && clips.length > 0 && <RecentClips clips={clips} onOpen={onOpen} />}
       </div>
     </main>
   );
 }
 
-/* ------------------------------------------------------------------ hero */
-
-function Hero({ onSample, onNew }) {
-  return (
-    <section className="mx-auto grid max-w-[1280px] items-center gap-10 px-4 py-10 sm:px-6 lg:min-h-[calc(100dvh-48px)] lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14 lg:px-10 lg:py-8">
-      <div className="flex flex-col items-start gap-6">
-        <span className="inline-flex h-7 items-center gap-2 rounded-full border border-line2 px-3 t-overline text-mute">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          Directed VFX · ComfyUI + LTX-2.5
-        </span>
-        <h1 className="hero-title text-ink">Make the effect follow the <span className="text-path">move</span>.</h1>
-        <p className="max-w-[480px] text-[17px] leading-[26px] text-mute">
-          Prompted effects drift off the hand. CueFX tracks the body in your clip, lets you draw where the effect goes, and renders it on your footage.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={onSample}
-            className="inline-flex h-12 items-center gap-2 rounded-[10px] bg-accent px-5 text-[15px] font-medium text-on-accent transition-colors hover:bg-accent-hi">
-            <Icon name="play" size={16} /> Try the sample clip
-          </button>
-          <button type="button" onClick={onNew}
-            className="inline-flex h-12 items-center gap-2 rounded-[10px] border border-line2 bg-panel px-5 text-[15px] font-medium text-ink transition-colors hover:bg-raised">
-            <Icon name="upload" size={16} /> Upload your clip
-          </button>
-        </div>
-        <Steps />
-      </div>
-      <Monitor />
-    </section>
-  );
-}
+/* ------------------------------------------------------------------ the direct bar */
 
 /**
- * The three stages on one card, joined by a line through their icons, so the order reads from the line
- * rather than from numbers. The icons take the colours the editor uses: tracking blue, path yellow.
- * Side by side from 640px; stacked below, with the line running down.
+ * The shot set up in four choices, in the order the flow runs: clip, body point, behaviour, look.
+ * Every chip is a real control; "Try this shot" starts the flow with all four already applied.
  */
-function Steps() {
+function DirectBar({ setup, setSetup, onStart }) {
+  const [open, setOpen] = useState(null);
+  const bar = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (event) => { if (!bar.current?.contains(event.target)) setOpen(null); };
+    const key = (event) => { if (event.key === "Escape") setOpen(null); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", key); };
+  }, [open]);
+
+  const look = LOOKS.find((item) => item.id === setup.look) || LOOKS[1];
+  const point = BAR_PARTS[setup.track] || BAR_PARTS[0];
+  const behaviour = BAR_BEHAVIOURS.find((item) => item.id === setup.behaviour) || BAR_BEHAVIOURS[0];
+  const clip = CLIPS.find((item) => item.id === setup.clip) || CLIPS[0];
+  const pick = (patch) => { setSetup((current) => ({ ...current, ...patch })); setOpen(null); };
+
+  const chips = [
+    {
+      id: "clip", label: "Clip", value: clip.name, tone: "text-mute",
+      icon: <Icon name="film" size={16} className="flex-none text-mute" />,
+      options: CLIPS.map((item) => ({ key: item.id, name: item.name, note: item.note, selected: item.id === setup.clip, pick: () => pick({ clip: item.id }) })),
+    },
+    {
+      id: "track", label: "Track", value: point.name, tone: "text-track",
+      options: BAR_PARTS.map((item, index) => ({ key: item.name, name: item.name, selected: index === setup.track, pick: () => pick({ track: index }) })),
+    },
+    {
+      id: "behaviour", label: "Path", value: behaviour.name, tone: "text-path",
+      options: BAR_BEHAVIOURS.map((item) => ({ key: item.id, name: item.name, note: item.note, selected: item.id === setup.behaviour, pick: () => pick({ behaviour: item.id }) })),
+    },
+    {
+      id: "look", label: "Look", value: look.name, tone: "text-mute",
+      icon: <span className="block h-6 w-6 flex-none overflow-hidden rounded-full bg-black"><LookStill id={look.id} className="h-full w-full" /></span>,
+      options: LOOKS.map((item) => ({ key: item.id, name: item.name, note: item.note, selected: item.id === setup.look, pick: () => pick({ look: item.id }), art: item.id })),
+    },
+  ];
+
   return (
-    <div className="mt-2 w-full max-w-[520px]">
-      <p className="t-overline mb-3 text-faint">How it works</p>
-      <ol className="relative grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-4">
-        <span aria-hidden="true" className="absolute top-[14px] bottom-[14px] left-[14px] w-px bg-line2 sm:hidden" />
-        <span aria-hidden="true" className="absolute top-[14px] left-[14px] hidden h-px bg-line2 sm:block" style={{ right: "calc((100% - 32px) / 3 - 14px)" }} />
-        {STEPS.map((step) => (
-          <li key={step.title} className="relative flex items-start gap-3 sm:flex-col sm:gap-2">
-            <span className={cx("relative grid h-7 w-7 flex-none place-items-center rounded-full border border-line2 bg-bg", step.tone)}>
-              <Icon name={step.icon} size={13} />
-            </span>
-            <span className="flex min-w-0 flex-col">
-              <span className="text-[13px] leading-[18px] font-medium text-ink">{step.title}</span>
-              <span className="text-xs leading-4 text-faint">{step.body}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
+    <div ref={bar} role="group" aria-label="Shot setup"
+      className="mt-8 flex w-full max-w-[1040px] flex-col gap-1 rounded-[20px] border border-line2 bg-panel p-2 text-left sm:flex-row sm:items-center">
+      {chips.map((chip, index) => (
+        <div key={chip.id} className="flex items-center">
+          {index > 0 && <span aria-hidden="true" className="mr-1 hidden h-7 w-px flex-none bg-line sm:block" />}
+          <div className="relative w-full sm:w-auto">
+            <button type="button" aria-haspopup="listbox" aria-expanded={open === chip.id} onClick={() => setOpen(open === chip.id ? null : chip.id)}
+              className={cx("flex h-[52px] w-full items-center gap-2.5 rounded-[14px] px-3.5 text-left transition-colors hover:bg-raised", open === chip.id && "bg-raised")}>
+              {chip.icon}
+              <span className="flex min-w-0 flex-col">
+                <span className={cx("t-overline", chip.tone)}>{chip.label}</span>
+                <span className="truncate text-sm font-medium text-ink">{chip.value}</span>
+              </span>
+              <Icon name="chevDown" size={14} className="ml-auto flex-none text-faint sm:ml-1" />
+            </button>
+            {open === chip.id && (
+              <ul role="listbox" aria-label={chip.label}
+                className="absolute top-[calc(100%+8px)] left-0 z-20 flex w-[260px] flex-col gap-0.5 rounded-[14px] border border-line2 bg-panel p-1.5 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]">
+                {chip.options.map((option) => (
+                  <li key={option.key}>
+                    <button type="button" role="option" aria-selected={option.selected} onClick={option.pick}
+                      className={cx("flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised", option.selected && "bg-raised")}>
+                      {option.art && <span className="block h-7 w-7 flex-none overflow-hidden rounded-full bg-black"><LookStill id={option.art} className="h-full w-full" /></span>}
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="text-sm font-medium text-ink">{option.name}</span>
+                        {option.note && <span className="truncate text-xs text-faint">{option.note}</span>}
+                      </span>
+                      {option.selected && <Icon name="check" size={14} className="flex-none text-accent" />}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      ))}
+      <span className="hidden flex-1 sm:block" />
+      <button type="button" onClick={onStart}
+        className="mt-1 inline-flex h-[52px] flex-none items-center justify-center gap-2 rounded-[14px] bg-accent px-6 text-[15px] font-medium text-on-accent transition-colors hover:bg-accent-hi sm:mt-0">
+        <Icon name={setup.clip === "sample" ? "play" : "upload"} size={16} />
+        {setup.clip === "sample" ? "Try this shot" : "Choose a clip"}
+      </button>
     </div>
   );
 }
 
-/** The showcase take as a director's monitor: the directed path drawn live over the footage, with the prompted take one click away. */
+/* ------------------------------------------------------------------ the example take */
+
+/** The showcase take at full size, with the directed path drawn live over it and the prompted take one click away. */
 function Monitor() {
   const video = useRef(null);
   const [take, setTake] = useState("directed");
@@ -137,7 +203,7 @@ function Monitor() {
 
   return (
     <figure className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="group" aria-label="Take" className="inline-flex rounded-full border border-line bg-panel p-[3px]">
           {["prompted", "directed"].map((id) => (
             <button key={id} type="button" aria-pressed={take === id} onClick={() => setTake(id)}
@@ -146,10 +212,10 @@ function Monitor() {
             </button>
           ))}
         </div>
-        <span className="text-[13px] text-faint">Same kick, same model. {TAKES[take].note}</span>
+        <span className="text-[13px] text-faint">Example result · same kick, same model. {TAKES[take].note}</span>
       </div>
 
-      <div className="relative aspect-video w-full overflow-hidden rounded-[14px] border border-line bg-black">
+      <div className="relative aspect-video w-full overflow-hidden rounded-[20px] border border-line bg-black">
         <video key={take} ref={video} src={TAKES[take].src} poster={TAKES[take].poster} muted loop playsInline preload="auto" className="absolute inset-0 h-full w-full object-cover" />
         {showHud && (
           <svg viewBox="0 0 160 90" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
@@ -157,28 +223,30 @@ function Monitor() {
             {travelled.length > 1 && <polyline points={line(travelled)} fill="none" stroke="rgb(var(--c-path))" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
             {KEYS.map(([f, x, y]) => (
               <g key={f} opacity={f <= frame ? 1 : 0.45}>
-                <rect x={x * 160 - 1.1} y={y * 90 - 1.1} width="2.2" height="2.2" transform={`rotate(45 ${x * 160} ${y * 90})`} fill="rgb(var(--c-path))" stroke="black" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
-                <text x={x * 160 + 2.2} y={y * 90 - 1.6} fontSize="2.2" fontWeight="600" fill="rgb(var(--c-path))" className="hud-text">f{f}</text>
+                <rect x={x * 160 - 1} y={y * 90 - 1} width="2" height="2" transform={`rotate(45 ${x * 160} ${y * 90})`} fill="rgb(var(--c-path))" stroke="black" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
+                <text x={x * 160 + 2} y={y * 90 - 1.5} fontSize="1.8" fontWeight="600" fill="rgb(var(--c-path))" className="hud-text">f{f}</text>
               </g>
             ))}
             {live && (
               <g>
-                <circle cx={here[1] * 160} cy={here[2] * 90} r="5" fill="none" stroke="rgb(var(--c-track))" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-                <path d={`M${here[1] * 160 - 8} ${here[2] * 90}h3M${here[1] * 160 + 5} ${here[2] * 90}h3M${here[1] * 160} ${here[2] * 90 - 8}v3M${here[1] * 160} ${here[2] * 90 + 5}v3`} stroke="rgb(var(--c-track))" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                <circle cx={here[1] * 160} cy={here[2] * 90} r="4.5" fill="none" stroke="rgb(var(--c-track))" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                <path d={`M${here[1] * 160 - 7.5} ${here[2] * 90}h3M${here[1] * 160 + 4.5} ${here[2] * 90}h3M${here[1] * 160} ${here[2] * 90 - 7.5}v3M${here[1] * 160} ${here[2] * 90 + 4.5}v3`} stroke="rgb(var(--c-track))" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
               </g>
             )}
           </svg>
         )}
-        <span className="pointer-events-none absolute top-3 left-3 inline-flex h-[26px] items-center gap-2 rounded-full bg-black/70 px-2.5 text-xs font-medium text-white/90">
+        <span className="pointer-events-none absolute top-4 left-4 inline-flex h-7 items-center gap-2 rounded-full bg-black/70 px-3 text-xs font-medium text-white/90">
           <span className={cx("h-1.5 w-1.5 rounded-full", directed ? "bg-accent" : "bg-white/50")} />
-          {directed ? "Directed take · foot, left" : "Prompted take"}
+          {directed ? "Directed take · tracked foot, drawn path" : "Prompted take · no path"}
         </span>
         {directed && (
-          <span className="pointer-events-none absolute top-3 right-3 inline-flex h-[26px] items-center gap-2 rounded-full bg-black/70 px-2.5 text-xs font-medium text-white/90"><span className={cx("h-1.5 w-1.5 rounded-full", phase.dot)} />{phase.label}</span>
+          <span className="pointer-events-none absolute top-4 right-4 inline-flex h-7 items-center gap-2 rounded-full bg-black/70 px-3 text-xs font-medium text-white/90">
+            <span className={cx("h-1.5 w-1.5 rounded-full", phase.dot)} />{phase.label}
+          </span>
         )}
         {directed && (
           <button type="button" onClick={() => setHud((value) => !value)} aria-pressed={hud}
-            className="absolute right-3 bottom-3 inline-flex h-8 items-center gap-1.5 rounded-full bg-black/70 px-3 text-xs font-medium text-white/90 hover:bg-black/85">
+            className="absolute right-4 bottom-4 inline-flex h-9 items-center gap-1.5 rounded-full bg-black/70 px-3.5 text-xs font-medium text-white/90 hover:bg-black/85">
             <Icon name="route" size={13} /> {hud ? "Hide path" : "Show path"}
           </button>
         )}
@@ -189,24 +257,21 @@ function Monitor() {
           <span key={item.id} className={cx("flex items-center overflow-hidden px-2.5 whitespace-nowrap", directed ? item.tone : "bg-raised text-faint")}
             style={{ width: `${((item.to - item.from) / HERO_FRAMES) * 100}%` }}>{directed ? item.label : ""}</span>
         ))}
-        {!directed && <span className="absolute inset-0 flex items-center px-2.5 text-faint">No cue: the model decides the timing</span>}
+        {!directed && <span className="absolute inset-0 flex items-center px-2.5 text-faint">No cue: the model decides where and when</span>}
         <span className="pointer-events-none absolute inset-y-0 w-0.5 bg-ink" style={{ left: `${(frame / HERO_FRAMES) * 100}%` }} />
       </div>
     </figure>
   );
 }
 
-/* ------------------------------------------------------------------ below the fold */
+/* ------------------------------------------------------------------ below the example */
 
-function SectionHead({ overline, title, body, action }) {
+function SectionHead({ overline, title, body }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div className="flex max-w-[640px] flex-col gap-1.5">
-        <p className="t-overline text-accent">{overline}</p>
-        <h2 className="section-title text-ink">{title}</h2>
-        {body && <p className="text-sm text-mute">{body}</p>}
-      </div>
-      {action}
+    <div className="flex max-w-[640px] flex-col gap-1.5">
+      <p className="t-overline text-accent">{overline}</p>
+      <h2 className="section-title text-ink">{title}</h2>
+      {body && <p className="text-sm text-mute">{body}</p>}
     </div>
   );
 }
@@ -226,11 +291,11 @@ function MotionGlyph({ behaviour }) {
 function Presets({ onPreset }) {
   return (
     <section className="flex flex-col gap-5 border-t border-line pt-10">
-      <SectionHead overline="Start from a preset" title="Pick what the effect does" body="Each preset sets the behaviour, the look and the prompt. You can change all three in the editor." />
+      <SectionHead overline="Presets" title="Start from a preset" body="A preset sets the path and the look in the bar above. You can change both in the editor." />
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {PRESETS.map((preset) => (
           <li key={preset.id}>
-            <button type="button" onClick={() => onPreset(preset.id)} style={{ "--glow": LOOK_GLOW[preset.look] }}
+            <button type="button" onClick={() => onPreset(preset)} style={{ "--glow": LOOK_GLOW[preset.look] }}
               className="preset-card group flex h-full w-full items-center gap-4 rounded-[14px] border border-line bg-panel p-3 text-left transition-colors hover:bg-raised">
               <span className="block h-20 w-20 flex-none overflow-hidden rounded-[10px] bg-black p-2">
                 <LookStill id={preset.look} className="h-full w-full transition-transform duration-300 group-hover:scale-110" />
