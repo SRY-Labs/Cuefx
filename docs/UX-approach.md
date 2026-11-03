@@ -157,6 +157,7 @@ Every flow screen shows the four steps (Upload, Track, Direct, Render) in its he
 - `web/lib/heroPath.js`: the effect's measured path in the showcase video (new)
 - `web/lib/api.js`: `startGeneration`, `getGeneration`, `pollGeneration`
 - `web/app/layout.js`, `web/app/globals.css`, `web/app/fonts/`: Outfit and Plus Jakarta Sans self-hosted, type roles
+  - Fix in `globals.css`: a base rule (`button { color: inherit }`) sat outside Tailwind's layers, so it overrode every text colour set on a button. That is why green buttons showed white text instead of the design system's black (`on-accent`). The rule now lives in `@layer base`, so button text colours apply as designed across the whole app.
 - `web/public/showcase/`: compressed `*_web.mp4` and `hood-*.jpg` files
 
 ## 9. How to check it

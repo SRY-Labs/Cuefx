@@ -92,7 +92,7 @@ body {
   line-height: 20px;
   -webkit-font-smoothing: antialiased;
 }
-button, input, select { font: inherit; color: inherit; }
+@layer base { button, input, select { font: inherit; color: inherit; } }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 1px; }
 ::selection { background: rgb(var(--c-accent) / 0.35); }
