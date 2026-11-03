@@ -48,7 +48,7 @@ export default function Page() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <div className="flex h-12 flex-none items-center gap-3 border-b border-line bg-panel px-4 text-xs text-mute">
+      <div className={`flex h-12 flex-none items-center gap-3 border-b px-4 text-xs text-mute ${view === "home" ? "border-white/10 bg-[#060706] text-white/60 [&_.t-h2]:text-white" : "border-line bg-panel"}`}>
         <button type="button" onClick={home} className="flex items-center gap-2 rounded-[10px] px-1 py-1" aria-label="CueFX home">
           <span className="grid h-6 w-7 place-items-center rounded-[6px] bg-accent text-on-accent">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
