@@ -141,20 +141,10 @@ input[type="range"].compare-range { -webkit-appearance: none; appearance: none; 
 .t-hero { font-size: 24px; line-height: 30px; font-weight: 600; letter-spacing: -0.01em; }
 @media (min-width: 640px) { .t-hero { font-family: var(--font-display), var(--font-ui), sans-serif; font-size: 32px; line-height: 38px; font-weight: 700; letter-spacing: -0.015em; } }
 
-/* ---------- Landing: the CueFX design language on top of the VestraPath tokens ---------- */
-.hero-grid {
-  background-image: radial-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px);
-  background-size: 24px 24px;
-  mask-image: radial-gradient(ellipse 80% 60% at 40% 30%, black 30%, transparent 75%);
-}
-.hero-title { font-family: var(--font-display), var(--font-ui), sans-serif; font-weight: 700; color: #fff; font-size: 36px; line-height: 40px; letter-spacing: -0.03em; }
-@media (min-width: 640px) { .hero-title { font-size: 52px; line-height: 56px; } }
-@media (min-width: 1024px) { .hero-title { font-size: 64px; line-height: 66px; } }
-.hero-gradient { background: linear-gradient(90deg, rgb(var(--c-accent-hi)), rgb(var(--c-accent)) 35%, rgb(var(--c-track)) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* ---------- Landing: CueFX's own language on the VestraPath tokens. Flat surfaces, no gradients. ---------- */
+.hero-title { font-family: var(--font-display), var(--font-ui), sans-serif; font-weight: 700; font-size: 36px; line-height: 40px; letter-spacing: -0.03em; }
+@media (min-width: 640px) { .hero-title { font-size: 48px; line-height: 52px; } }
+@media (min-width: 1280px) { .hero-title { font-size: 60px; line-height: 64px; } }
 .section-title { font-family: var(--font-display), var(--font-ui), sans-serif; font-weight: 700; font-size: 24px; line-height: 30px; letter-spacing: -0.02em; }
-@media (min-width: 640px) { .section-title { font-size: 32px; line-height: 38px; } }
-.preset-card:hover { border-color: rgb(var(--glow) / 0.45); box-shadow: 0 0 0 1px rgb(var(--glow) / 0.15), 0 20px 50px -20px rgb(var(--glow) / 0.5); }
-.wire { background: linear-gradient(90deg, rgb(255 255 255 / 0.15), rgb(var(--c-accent)), rgb(255 255 255 / 0.15)) 0 0 / 200% 100%; animation: wire 1.8s linear infinite; }
-@keyframes wire { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-@media (prefers-reduced-motion: reduce) { .wire { animation: none; } }
+.preset-card:hover { border-color: rgb(var(--glow) / 0.45); }
 .hud-text { paint-order: stroke; stroke: rgb(0 0 0 / 0.75); stroke-width: 0.45px; stroke-linejoin: round; }
