@@ -20,6 +20,8 @@ import httpx
 from comfy_sdk import Comfy
 from comfy_sdk.exceptions import ComfyError
 
+from generate.comfy_client import open_client
+
 WORKFLOW_PATH = Path(__file__).resolve().parent / "workflows" / "CueFX_Image_Edit_API.json"
 
 LOAD_IMAGE = "470"
@@ -100,7 +102,9 @@ def _connection_failure(exc: ComfyError) -> bool:
 
 
 def _client(timeout: float) -> Comfy:
-    return Comfy(api_key=_credentials(), timeout=timeout, client_info="cuefx")
+    key = _credentials()
+    base = os.environ.get("COMFY_BASE_URL", "").strip()
+    return open_client(base, key, timeout)
 
 
 def check_connection() -> None:

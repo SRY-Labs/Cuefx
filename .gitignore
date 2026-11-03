@@ -11,4 +11,5 @@ pycache/
 pytest.ini
 requirements-dev.txt
 .env
+.cursor/
 
