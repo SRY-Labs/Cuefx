@@ -9,6 +9,7 @@ export function cx(...parts) {
 const ICONS = {
   film: "M4 6h16v12H4zM8 6v12M16 6v12M4 10h4M4 14h4M16 10h4M16 14h4",
   upload: "M12 16V6M8 9l4-4 4 4M5 19h14",
+  download: "M12 5v10M8 11l4 4 4-4M5 19h14",
   play: "M8 6l10 6-10 6z",
   pause: "M7 6h4v12H7zM13 6h4v12h-4z",
   check: "M5 12l5 5L20 7",
@@ -47,13 +48,13 @@ export function Icon({ name, size = 16, className }) {
 export function Btn({ variant = "secondary", size = "md", children, className, icon, ...props }) {
   const styles = {
     primary: "bg-accent text-on-accent hover:bg-accent-hi",
-    secondary: "bg-raised text-ink border border-line2 hover:border-mute",
+    secondary: "bg-panel text-ink border border-line2 hover:bg-raised",
     ghost: "text-mute hover:text-ink hover:bg-raised",
     danger: "bg-err/15 text-err border border-err/40 hover:bg-err/25",
   };
-  const height = size === "sm" ? "h-7 px-2 text-xs" : "h-8 px-3 text-sm";
+  const height = size === "sm" ? "h-7 px-3 text-xs" : "h-9 px-4 text-sm";
   return (
-    <button type="button" className={cx("inline-flex items-center gap-1.5 rounded disabled:opacity-40", height, styles[variant], className)} {...props}>
+    <button type="button" className={cx("inline-flex items-center gap-2 rounded-[10px] font-medium transition-colors disabled:opacity-45", height, styles[variant], className)} {...props}>
       {icon && <Icon name={icon} size={14} />}
       {children}
     </button>
@@ -70,12 +71,13 @@ export function IconBtn({ icon, label, active, className, ...props }) {
 
 export function Alert({ error, children, action, icon }) {
   return (
-    <div role="alert" className={cx("rounded-md border border-err/40 px-3 py-2 text-sm", icon ? "bg-err/5" : "bg-err/10")}>
+    <div role="alert" title={error?.code ? `${error.code}${error.status ? ` · ${error.status}` : ""}` : undefined} className={cx("rounded-[10px] border border-err/40 px-3 py-2 text-sm", icon ? "bg-err/5" : "bg-err/10")}>
       {icon
         ? <div className="flex items-center gap-1.5 font-semibold text-err"><Icon name={icon} size={15} className="flex-none" />{children}</div>
         : <div className="font-semibold text-ink">{children}</div>}
       {error?.message && <p className="mt-1 text-mute">{error.message}</p>}
-      {error?.code && <p className="mt-1 text-xs text-faint tnum">{error.code}{error.status ? ` · ${error.status}` : ""}</p>}
+      {/* The code stays available for support, without putting it in front of people. */}
+      {error?.code && <span className="sr-only">{error.code}{error.status ? ` ${error.status}` : ""}</span>}
       {action && <div className="mt-2">{action}</div>}
     </div>
   );
@@ -91,19 +93,25 @@ export function Field({ label, children }) {
 }
 
 export function Num({ value, min, max, step = 1, onChange, disabled }) {
+  const [text, setText] = useState(null);
   return (
     <input
       type="number"
-      className="h-7 w-full min-w-0 rounded border border-line bg-field px-1.5 text-xs text-ink tnum disabled:opacity-40"
-      value={value ?? ""}
+      inputMode="decimal"
+      className="h-7 w-full min-w-[4.5rem] rounded border border-line bg-field px-1.5 text-xs text-ink tnum disabled:opacity-40"
+      value={text ?? value ?? ""}
       min={min}
       max={max}
       step={step}
       disabled={disabled}
       onChange={(event) => {
-        const next = Number(event.target.value);
+        const raw = event.target.value;
+        setText(raw);
+        if (raw === "" || raw === "-" || raw === "." || raw === "-.") return;
+        const next = Number(raw);
         if (Number.isFinite(next)) onChange(next);
       }}
+      onBlur={() => setText(null)}
     />
   );
 }

@@ -173,34 +173,132 @@ function clamp(value, lo, hi) {
   return Math.max(lo, Math.min(hi, Math.round(value)));
 }
 
+function shiftRoute(route, release) {
+  let prev = release;
+  return (route || []).map((point, index) => {
+    if (index === 0) return { ...point, f: release };
+    const next = Math.max(point.f, prev + 1);
+    prev = next;
+    return { ...point, f: next };
+  });
+}
+
+// The typed frame is kept. Later marks move later, and earlier marks move earlier, so a 3-digit
+// frame is not snapped back to the previous neighbour. The clip length is the only hard stop.
+function placeTiming(appear, release, start, end, frames, hold, key) {
+  if (hold) {
+    if (key === "appear") {
+      appear = clamp(appear, 0, frames - 2);
+      start = Math.max(start, appear + 1);
+      end = Math.max(end, start + 1);
+      if (end > frames) {
+        end = frames;
+        start = end - 1;
+        appear = start - 1;
+      }
+    } else if (key === "vanishStart") {
+      start = clamp(start, 1, frames - 1);
+      end = Math.max(end, start + 1);
+      if (end > frames) {
+        end = frames;
+        start = end - 1;
+      }
+      appear = Math.min(Math.max(0, appear), start - 1);
+    } else if (key === "vanishEnd") {
+      end = clamp(end, 2, frames);
+      start = Math.min(start, end - 1);
+      appear = Math.min(Math.max(0, appear), start - 1);
+      start = Math.max(start, appear + 1);
+      end = Math.max(end, start + 1);
+    }
+    return { appear, release: null, start, end };
+  }
+  if (key === "appear") {
+    appear = clamp(appear, 0, frames - 3);
+    release = Math.max(release, appear + 1);
+    start = Math.max(start, release + 1);
+    end = Math.max(end, start + 1);
+    if (end > frames) {
+      end = frames;
+      start = end - 1;
+      release = start - 1;
+      appear = release - 1;
+    }
+  } else if (key === "release") {
+    release = clamp(release, 1, frames - 2);
+    appear = Math.min(Math.max(0, appear), release - 1);
+    start = Math.max(start, release + 1);
+    end = Math.max(end, start + 1);
+    if (end > frames) {
+      end = frames;
+      start = end - 1;
+      release = Math.min(release, start - 1);
+      appear = Math.min(appear, release - 1);
+    }
+  } else if (key === "vanishStart") {
+    start = clamp(start, 2, frames - 1);
+    end = Math.max(end, start + 1);
+    if (end > frames) {
+      end = frames;
+      start = end - 1;
+    }
+    release = Math.min(release, start - 1);
+    appear = Math.min(Math.max(0, appear), release - 1);
+    release = Math.max(release, appear + 1);
+  } else if (key === "vanishEnd") {
+    end = clamp(end, 3, frames);
+    start = Math.min(start, end - 1);
+    release = Math.min(release, start - 1);
+    appear = Math.min(Math.max(0, appear), release - 1);
+    release = Math.max(release, appear + 1);
+    start = Math.max(start, release + 1);
+    end = Math.max(end, start + 1);
+    if (end > frames) {
+      end = frames;
+      start = end - 1;
+      release = start - 1;
+      appear = release - 1;
+    }
+  }
+  return { appear, release, start, end };
+}
+
 export function setTiming(cue, key, frame) {
-  const T = phaseTimes(cue);
   if (key === "entranceStart") {
     const es = clamp(frame, 0, cue.appear_frame);
     return { ...cue, entrance: { seconds: Math.round(((cue.appear_frame - es) / cue.fps) * 100) / 100 } };
   }
-  if (key === "appear") {
-    return { ...cue, appear_frame: clamp(frame, 0, (T.release ?? T.vs) - 1) };
+  if (!["appear", "release", "vanishStart", "vanishEnd"].includes(key)) return cue;
+  const hold = holdsOnBody(cue.behaviour);
+  if (key === "release" && hold) return cue;
+  const value = Math.round(frame);
+  const frames = Number.isFinite(cue.frames) ? cue.frames : value;
+  let appear = cue.appear_frame ?? 0;
+  let release = cue.release_frame ?? appear + 1;
+  let start = cue.vanish?.start ?? (hold ? appear + 1 : release + 1);
+  let end = cue.vanish?.end ?? start + 1;
+  if (key === "appear") appear = value;
+  else if (key === "release") release = value;
+  else if (key === "vanishStart") start = value;
+  else end = value;
+  const placed = placeTiming(appear, release, start, end, frames, hold, key);
+  const next = {
+    ...cue,
+    appear_frame: placed.appear,
+    vanish: { ...cue.vanish, start: placed.start, end: placed.end },
+  };
+  if (hold) return next;
+  next.release_frame = placed.release;
+  if (placed.release !== cue.release_frame && cue.route) {
+    const route = shiftRoute(cue.route, placed.release);
+    const last = route.length ? route[route.length - 1].f : placed.start;
+    if (last >= next.vanish.end) {
+      const vanishEnd = Math.min(frames, Math.max(next.vanish.end, last + 1));
+      next.vanish = { ...next.vanish, end: Math.max(vanishEnd, next.vanish.start + 1) };
+    }
+    next.route = route;
   }
-  if (key === "release" && !holdsOnBody(cue.behaviour)) {
-    const rel = clamp(frame, cue.appear_frame + 1, cue.vanish.start - 1);
-    let prev = rel;
-    const route = (cue.route || []).map((point, index) => {
-      if (index === 0) return { ...point, f: rel };
-      const next = Math.max(point.f, prev + 1);
-      prev = next;
-      return { ...point, f: next };
-    });
-    return { ...cue, release_frame: rel, route };
-  }
-  if (key === "vanishStart") {
-    const floor = (holdsOnBody(cue.behaviour) ? cue.appear_frame : cue.release_frame) + 1;
-    return { ...cue, vanish: { ...cue.vanish, start: clamp(frame, floor, cue.vanish.end - 1) } };
-  }
-  if (key === "vanishEnd") {
-    return { ...cue, vanish: { ...cue.vanish, end: clamp(frame, cue.vanish.start + 1, cue.frames) } };
-  }
-  return cue;
+  return next;
 }
 
 export function toThrow(cue, behaviour) {

@@ -168,14 +168,16 @@ export async function pollElement(jobId, { signal, onJob } = {}) {
   return job;
 }
 
+// A styled reference frame from ComfyUI, made from a finished stand-in job.
 export const startGeneration = (jobId, prompt, signal) => request("POST", "/api/v1/generations", { json: { job_id: jobId, prompt }, signal });
-export const getGeneration = (generationId, signal) => request("GET", `/api/v1/generations/${generationId}`, { signal });
+export const getGeneration = (id, signal) => request("GET", `/api/v1/generations/${id}`, { signal });
 
-export async function pollGeneration(generationId, { signal, onGeneration } = {}) {
+export async function pollGeneration(id, { signal, onUpdate, onGeneration } = {}) {
   for (;;) {
-    const generation = await getGeneration(generationId, signal);
-    if (onGeneration) onGeneration(generation);
-    if (generation.status === "done" || generation.status === "failed") return generation;
+    const doc = await getGeneration(id, signal);
+    if (onUpdate) onUpdate(doc);
+    if (onGeneration) onGeneration(doc);
+    if (doc.status === "done" || doc.status === "failed") return doc;
     await delay(1500, signal);
   }
 }
