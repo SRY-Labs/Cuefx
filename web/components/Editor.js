@@ -13,6 +13,7 @@ import LookPicker, { LookStill } from "./LookPicker";
 import Plate, { platePoint } from "./Plate";
 import StandinPanel from "./StandinPanel";
 import Timeline from "./Timeline";
+import FlowSteps from "./FlowSteps";
 import { Alert, Btn, Icon, IconBtn, Num, Row, Seg, Slider, cx } from "./ui";
 
 const ORBIT_FIELDS = [
@@ -43,9 +44,30 @@ function adoptTrack(current, tracked) {
   return next;
 }
 
-export default function Editor({ clip, created, onBack }) {
-  const [cue, setCue] = useState(created.cue);
-  const [warnings, setWarnings] = useState(created.warnings || []);
+// Settings the backend stores but does not render yet. They are not the user's problem, so the editor hides them.
+const hidden = (list) => (list || []).filter((warning) => warning.code !== "setting_not_used");
+
+/** The first cue the editor shows: the preset's behaviour and look, at a size people can see. */
+function prepare(cue, preset, clip) {
+  let next = { ...cue };
+  if (preset) {
+    next = withLook(next, preset.look, preset.prompt);
+    if (preset.behaviour !== (next.behaviour || "hold_throw")) {
+      if (holdsOnBody(preset.behaviour)) next = { ...next, behaviour: preset.behaviour, release_frame: null, route: [] };
+      else if (holdsOnBody(next.behaviour)) next = toThrow(next, preset.behaviour);
+      else next = { ...next, behaviour: preset.behaviour };
+    }
+  }
+  const [plateW, plateH] = clip.plate_size || [1920, 1080];
+  const readable = Math.round(Math.min(plateW, plateH) * 0.12);
+  if (!next.diameter_px || next.diameter_px < readable) next = withDiameter(next, readable);
+  return next;
+}
+
+export default function Editor({ clip, created, preset, onBack }) {
+  const start = useMemo(() => prepare(created.cue, preset, clip), [created]);
+  const [cue, setCue] = useState(start);
+  const [warnings, setWarnings] = useState(hidden(created.warnings));
   const [effectRange, setEffectRange] = useState(created.cue.effect_range);
   const [frames, setFrames] = useState(null);
   const [frame, setFrame] = useState(Math.min(created.cue.appear_frame || 0, clip.frames - 1));
@@ -69,7 +91,7 @@ export default function Editor({ clip, created, onBack }) {
   const [clickPick, setClickPick] = useState(null);
   const [serverDefaults, setServerDefaults] = useState(null);
   const [leftSector, setLeftSector] = useState(null);
-  const [rightSector, setRightSector] = useState(null);
+  const [rightSector, setRightSector] = useState("effect");
   const [scale, setScale] = useState(0);
   const onScale = useCallback((value) => setScale(value), []);
   const [palms, setPalms] = useState(() => {
@@ -79,7 +101,7 @@ export default function Editor({ clip, created, onBack }) {
   const flight = useRef(null);
   const cueRef = useRef(cue);
   const svgRef = useRef(null);
-  const origin = useRef(created.cue.route || []);
+  const origin = useRef(start.route || []);
   cueRef.current = cue;
 
   useEffect(() => { loadDefaults().then(setServerDefaults).catch(() => {}); }, []);
@@ -95,7 +117,7 @@ export default function Editor({ clip, created, onBack }) {
   useEscapeDrawer(!!(leftSector || rightSector), closeAll);
 
   useEffect(() => {
-    refresh(created.cue);
+    refresh(start);
     return () => flight.current?.abort();
   }, [created]);
 
@@ -144,7 +166,7 @@ export default function Editor({ clip, created, onBack }) {
       const drawn = blocked ? null : await preview(norm.cue, signal);
       if (signal.aborted) return false;
       remember(norm.cue);
-      setWarnings(merge(checked.warnings, norm.warnings));
+      setWarnings(hidden(merge(checked.warnings, norm.warnings)));
       setEffectRange(checked.effect_range);
       setFrames(drawn ? drawn.frames : null);
       return true;
@@ -457,22 +479,20 @@ export default function Editor({ clip, created, onBack }) {
     <main className="relative flex h-full min-h-0 flex-col overflow-hidden">
       <header className="grid h-12 flex-none grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4">
         <div className="flex min-w-0 items-center gap-3">
-          <Btn variant="ghost" onClick={onBack}>Shots</Btn>
+          <Btn variant="ghost" icon="home" onClick={onBack}>Home</Btn>
           <h1 className="min-w-0 truncate text-base font-semibold">{clip.filename}</h1>
           <span className="hidden truncate text-xs text-faint tnum lg:inline">{clipLine(clip)}</span>
         </div>
-        <div role="tablist" aria-label="Editor view" className="flex gap-0.5 rounded border border-line bg-field p-0.5">
-          <button type="button" role="tab" aria-selected={!standin} onClick={() => setStandin(false)}
-            className={cx("inline-flex h-7 items-center gap-1.5 rounded-sm px-3 text-xs font-medium", !standin ? "bg-accent text-on-accent" : "text-mute hover:bg-raised hover:text-ink")}>
-            <Icon name="sliders" size={14} />Editor
-          </button>
-          <button type="button" role="tab" aria-selected={standin} disabled={!standin && (busy || !!switching || errors.length > 0)} onClick={() => { if (standin) return; setPlaying(false); setStandin(true); }}
-            className={cx("inline-flex h-7 items-center gap-1.5 rounded-sm px-3 text-xs font-medium disabled:opacity-40", standin ? "bg-accent text-on-accent" : "text-mute hover:bg-raised hover:text-ink")}>
-            <Icon name="orb" size={14} />Render stand-in
-          </button>
-        </div>
+        <FlowSteps
+          current={standin ? "render" : "direct"}
+          onSelect={{ direct: () => setStandin(false), render: () => { if (standin) return; setPlaying(false); setStandin(true); } }}
+          disabled={{ render: !standin && (busy || !!switching || errors.length > 0) }}
+        />
         <div className="flex min-w-0 items-center justify-end gap-3">
           {busy && <span className="text-xs text-mute">Updating…</span>}
+          {!standin && (
+            <Btn variant="primary" icon="orb" disabled={busy || !!switching || errors.length > 0} onClick={() => { setPlaying(false); setStandin(true); }}>Render preview</Btn>
+          )}
           {switching && <span className="inline-flex items-center gap-1.5 text-xs text-mute"><Icon name="loader" size={13} className="spin" /> Tracking the {switching}</span>}
         </div>
       </header>
