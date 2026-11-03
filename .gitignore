@@ -10,3 +10,5 @@ pycache/
 4.mp4
 pytest.ini
 requirements-dev.txt
+.env
+

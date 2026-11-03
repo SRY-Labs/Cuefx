@@ -37,3 +37,11 @@ class JobIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     clip_id: str
     cue: dict[str, Any]
+
+
+class GenerationIn(BaseModel):
+    """A finished stand-in job and the prompt for its reference frame."""
+    model_config = ConfigDict(extra="forbid")
+    job_id: str
+    prompt: str
+    seed: int | None = None

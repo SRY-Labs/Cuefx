@@ -34,6 +34,10 @@ class Settings:
         return self.data_dir / "standin"
 
     @property
+    def generations_dir(self) -> Path:
+        return self.data_dir / "generations"
+
+    @property
     def look_path(self) -> Path:
         return self.look_image or self.data_dir / "look" / "standin_orb.png"
 
