@@ -13,11 +13,12 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import config
-from api.v1 import clips, cue, generations, jobs, system
+from api.v1 import clips, cue, generations, jobs, system, videos
 from clips.store import ClipStore
 from errors import ApiError, from_cuefx, internal, invalid, not_found
 from cue import api
 from generate.store import GenerationStore
+from generate.video_store import VideoStore
 from render.jobs import StandinStore
 from render.queue import RenderQueue
 
@@ -84,6 +85,7 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
     app.state.queue = queue
     app.state.jobs = StandinStore(settings, store, queue)
     app.state.generations = GenerationStore(settings, app.state.jobs, RenderQueue())
+    app.state.videos = VideoStore(settings, app.state.jobs, app.state.generations, RenderQueue())
     app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_methods=["*"],
                        allow_headers=["*"], expose_headers=["Content-Disposition"])
     app.add_middleware(RequestStarted)
@@ -126,6 +128,7 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
     app.include_router(cue.router, prefix=api_router_prefix)
     app.include_router(jobs.router, prefix=api_router_prefix)
     app.include_router(generations.router, prefix=api_router_prefix)
+    app.include_router(videos.router, prefix=api_router_prefix)
     return app
 
 
