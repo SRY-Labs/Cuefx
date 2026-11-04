@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { clipUploadIssue, listClips } from "../lib/api";
-import { LOOKS, clipLine } from "../lib/cue";
+import { clipUploadIssue, frameUrl, listClips } from "../lib/api";
+import { LOOKS } from "../lib/cue";
 import { HERO_FPS, HERO_FRAMES, HERO_PATH } from "../lib/heroPath";
 import { PRESETS, presetById } from "../lib/presets";
 import { LookStill } from "./LookStill";
-import { Icon, cx } from "./ui";
+import { Icon, Tip, cx } from "./ui";
 
 // Phases of the directed showcase take, in frames at 30 fps (read off the video).
 const PHASES = [
@@ -23,6 +23,7 @@ const TAKES = {
   prompted: { src: "/showcase/2_problem_web.mp4", poster: "/showcase/prompted.jpg", note: "Prompt only: the effect leaves the body." },
 };
 
+const REPO_URL = "https://github.com/SRY-Labs/Cuefx";
 const ACCEPT = "video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm";
 
 function fileSeconds(file) {
@@ -102,6 +103,12 @@ export default function HomeScreen({ onStart, onOpen, server }) {
         <span className="text-[15px] font-semibold text-ink">CueFX</span>
         <span className="flex-1" />
         <ServerMark server={server} />
+        <Tip title="View the code" note="CueFX on GitHub: the app, the API and the ComfyUI workflows." side="bottom">
+          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="CueFX on GitHub"
+            className="inline-flex h-8 items-center gap-2 rounded-[8px] px-2.5 text-[13px] font-medium text-mute hover:bg-raised hover:text-ink">
+            <GitHubMark />GitHub
+          </a>
+        </Tip>
       </div>
       <section ref={top} className="mx-auto flex max-w-[1200px] scroll-mt-4 flex-col items-center px-4 pt-6 pb-10 text-center sm:px-6 sm:pt-10">
         <span className="inline-flex h-7 items-center gap-2 rounded-full bg-raised px-3 text-xs font-medium text-mute">
@@ -387,24 +394,50 @@ function Presets({ onPreset }) {
   );
 }
 
+/** A readable name for a clip: the filename without its extension and its number-only parts. */
+function clipTitle(filename = "") {
+  const base = filename.replace(/\.[a-z0-9]+$/i, "");
+  const words = base.split(/[\s_\-.]+/).filter((word) => word && !/^\d+(fps|p|k)?$/i.test(word));
+  if (!words.length) return "Uploaded clip";
+  const text = words.join(" ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * Clips already on the demo server, shown by a still from each so they can be told apart. The list is shared by
+ * everyone using the demo (the server keeps no owner or date), so the section says so plainly.
+ */
 function RecentClips({ clips, onOpen }) {
   return (
-    <section className="flex flex-col gap-4">
-      <SectionHead overline="Recent clips" title="Pick up a clip already on the server" body="Clips are shared on this demo server. Opening one starts tracking in the editor." />
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {clips.slice(0, 6).map((clip) => (
-          <li key={clip.clip_id}>
-            <button type="button" onClick={() => onOpen(clip)} className="flex w-full items-center gap-3 rounded-[10px] border border-line bg-panel px-3 py-2.5 text-left hover:bg-raised">
-              <span className="grid h-9 w-9 flex-none place-items-center rounded-[10px] bg-bg text-mute"><Icon name="film" /></span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium text-ink">{clip.filename}</span>
-                <span className="block truncate text-xs text-faint tnum">{clipLine(clip)}</span>
-              </span>
-            </button>
-          </li>
-        ))}
+    <section className="flex flex-col gap-5 border-t border-line pt-10">
+      <SectionHead overline="Clips on this demo server" title="Pick up a clip already uploaded" body="Shared by everyone using this demo. Opening one goes straight to the editor and tracks it there." />
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {clips.slice(0, 6).map((clip) => {
+          const seconds = clip.frames && clip.fps ? Math.round(clip.frames / clip.fps) : null;
+          return (
+            <li key={clip.clip_id} className="min-w-0">
+              <button type="button" onClick={() => onOpen(clip)} title={clip.filename}
+                className="group flex w-full flex-col overflow-hidden rounded-[10px] border border-line bg-panel text-left transition-colors hover:bg-raised active:bg-sel">
+                <span className="relative block aspect-video w-full overflow-hidden bg-well">
+                  <img src={frameUrl(clip.clip_id, Math.floor((clip.frames || 1) / 2))} alt="" loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+                  {seconds != null && <span className="absolute bottom-1.5 right-1.5 rounded-[5px] bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white tnum">{seconds} s</span>}
+                </span>
+                <span className="truncate px-2.5 py-2 text-[13px] font-medium text-ink">{clipTitle(clip.filename)}</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
+  );
+}
+
+function GitHubMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+    </svg>
   );
 }
 
