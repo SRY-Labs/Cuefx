@@ -164,7 +164,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
       className="mt-8 flex w-full max-w-[760px] flex-col gap-1 rounded-[16px] border border-line2 bg-panel p-1.5 text-left sm:flex-row sm:items-center">
       <div className="relative w-full sm:w-auto sm:min-w-0">
         <button type="button" aria-haspopup="listbox" aria-expanded={open === "clip"} onClick={() => setOpen(open === "clip" ? null : "clip")}
-          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised", open === "clip" && "bg-sel")}>
+          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised active:bg-sel")}>
           {setup.clip === "file" ? <Icon name="film" size={18} className="flex-none text-mute" /> : <img src="/showcase/input.jpg" alt="" className="h-7 w-11 flex-none rounded-[6px] object-cover" />}
           <span className="flex min-w-0 flex-col">
             <span className="text-[11px] font-medium text-faint">Clip</span>
@@ -176,7 +176,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
           <ul role="listbox" aria-label="Clip" className="absolute top-[calc(100%+8px)] left-0 z-20 flex w-[330px] max-w-[calc(100vw-48px)] flex-col gap-0.5 rounded-[12px] border border-line2 bg-raised p-1 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.7)]">
             <li>
               <button type="button" role="option" aria-selected={setup.clip === "sample"} onClick={() => { setSetup((current) => ({ ...current, clip: "sample" })); setOpen(null); }}
-                className={cx("flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/60 active:bg-sel")}>
+                className={cx("flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/70", setup.clip === "sample" && "bg-sel")}>
                 <img src="/showcase/input.jpg" alt="" className="h-8 w-14 flex-none rounded-[6px] object-cover" />
                 <span className="flex min-w-0 flex-1 flex-col"><span className="text-sm font-medium text-ink">Sample · rooftop kick</span><span className="text-xs text-faint">8 s · ready, nothing to upload</span></span>
                 {setup.clip === "sample" && <Icon name="check" size={14} className="flex-none text-ink" />}
@@ -185,7 +185,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
             {setup.file && (
               <li>
                 <button type="button" role="option" aria-selected={setup.clip === "file"} onClick={() => { setSetup((current) => ({ ...current, clip: "file" })); setOpen(null); }}
-                  className={cx("flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/60 active:bg-sel")}>
+                  className={cx("flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/70", setup.clip === "file" && "bg-sel")}>
                   <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] bg-panel text-mute"><Icon name="film" size={16} /></span>
                   <span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-sm font-medium text-ink">{setup.file.name}</span><span className="text-xs text-faint">{setup.seconds ? `${Math.round(setup.seconds)} s · ` : ""}uploads when you start</span></span>
                   {setup.clip === "file" && <Icon name="check" size={14} className="flex-none text-ink" />}
@@ -194,7 +194,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
             )}
             <li>
               <button type="button" role="option" aria-selected={false} onClick={() => { setOpen(null); onChooseFile(); }}
-                className="flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/60 active:bg-sel">
+                className="flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/70">
                 <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] border border-dashed border-line2 text-ink"><Icon name="upload" size={16} /></span>
                 <span className="flex min-w-0 flex-1 flex-col"><span className="text-sm font-medium text-ink">{setup.file ? "A different clip" : "Your clip"}</span><span className="text-xs text-faint">Choose a file · up to 15 s, one person in frame</span></span>
               </button>
@@ -205,7 +205,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
       <span aria-hidden="true" className="hidden h-7 w-px flex-none bg-line sm:block" />
       <div className="relative w-full sm:w-auto">
         <button type="button" aria-haspopup="listbox" aria-expanded={open === "preset"} onClick={() => setOpen(open === "preset" ? null : "preset")}
-          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised", open === "preset" && "bg-sel")}>
+          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised active:bg-sel")}>
           <span className="block h-7 w-7 flex-none overflow-hidden rounded-full bg-black"><LookStill id={preset.look} className="h-full w-full" /></span>
           <span className="flex min-w-0 flex-col">
             <span className="text-[11px] font-medium text-faint">Preset</span>
@@ -218,12 +218,12 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
             {PRESETS.map((item) => (
               <li key={item.id}>
                 <button type="button" role="option" aria-selected={item.id === setup.preset} onClick={() => { setSetup((current) => ({ ...current, preset: item.id })); setOpen(null); }}
-                  className={cx("relative flex w-full flex-col gap-1.5 rounded-[8px] p-1.5 text-left hover:bg-sel/60 active:bg-sel")}>
+                  className={cx("flex w-full flex-col gap-1.5 rounded-[8px] p-1.5 text-left", item.id === setup.preset ? "bg-sel" : "hover:bg-sel/60")}>
                   <span className="relative block h-16 w-full overflow-hidden rounded-[8px] bg-black">
                     <LookStill id={item.look} className="mx-auto h-full w-16" />
                     <span className="absolute bottom-1 right-1.5 text-faint"><MotionGlyph behaviour={item.behaviour} /></span>
                   </span>
-                  <span className="flex items-center gap-1.5 px-0.5 text-[13px] font-medium text-ink">{item.name}{item.id === setup.preset && <Icon name="check" size={13} className="ml-auto flex-none text-ink" />}</span>
+                  <span className="px-0.5 text-[13px] font-medium text-ink">{item.name}</span>
                 </button>
               </li>
             ))}
