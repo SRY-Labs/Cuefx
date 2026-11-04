@@ -14,6 +14,7 @@ import { LTX_PROMPT, STAGES, newTake, runTake, stagesOf, takeDownloads, takeMedi
 import Inspector from "./Inspector";
 import MediaLoading, { useMediaLoading } from "./MediaLoading";
 import Plate, { platePoint } from "./Plate";
+import TakesPlayer, { stageLine, takeProgress } from "./TakesPlayer";
 import Timeline from "./Timeline";
 import { Btn, Icon, Tip, cx } from "./ui";
 
@@ -882,21 +883,6 @@ function Mark() {
   );
 }
 
-function stageLine(take, now) {
-  const stages = stagesOf(take);
-  if (take.status === "failed") return `${STAGES.find((stage) => stage.id === take.failedStage)?.name || "Render"} failed`;
-  if (take.status === "done") return `${take.kind === "guide" ? "Guide pass" : lookById(take.settings.look).name} · ${clock((take.finished || now) - take.started)}`;
-  const at = stages.findIndex((stage) => stage.id === take.stage);
-  return `${stages[Math.max(0, at)]?.name || "Starting"} · ${clock(now - take.stageStarted)}`;
-}
-
-function takeProgress(take, now) {
-  if (take.status === "done") return 100;
-  const stages = stagesOf(take);
-  const at = Math.max(0, stages.findIndex((stage) => stage.id === take.stage));
-  return Math.min(100, ((at + Math.min(0.95, (now - take.stageStarted) / 1000 / (stages[at]?.typical || 60))) / stages.length) * 100);
-}
-
 /** The way into the takes: a count, and the progress of the one rendering. Takes play in their own view. */
 function TakesButton({ takes, now, onOpen }) {
   const live = takes.find((take) => take.status === "running");
@@ -911,113 +897,6 @@ function TakesButton({ takes, now, onOpen }) {
         {live && <span className="absolute bottom-0 left-0 h-[2px] bg-accent transition-[width] duration-1000" style={{ width: `${pct}%` }} />}
       </button>
     </Tip>
-  );
-}
-
-function TakeThumb({ take, clip }) {
-  const media = takeMedia(take);
-  if (media?.kind === "image") return <img src={media.url} alt="" className="h-full w-full object-cover" />;
-  if (take.generation?.status === "done" && take.generation.reference) return <img src={take.generation.reference} alt="" className="h-full w-full object-cover" />;
-  if (media?.kind === "video") return <video src={media.url} muted playsInline preload="metadata" className="h-full w-full object-cover" />;
-  if (clip && take.settings.cue.effect_range) return <img src={frameUrl(clip.clip_id, take.settings.cue.effect_range.start)} alt="" className="h-full w-full object-cover opacity-50" />;
-  return null;
-}
-
-/**
- * Takes play on their own, like a prototype preview: the video large, the takes in a row under it, and only what a
- * finished render allows (download, use its settings). Editing stays in the workspace behind it.
- */
-function TakesPlayer({ takes, current, clip, now, onPick, onClose, onRetry, onUse }) {
-  const media = takeMedia(current);
-  const loading = useMediaLoading(media?.url || null);
-  const downloads = takeDownloads(current);
-  const stages = stagesOf(current);
-  const range = current.settings.cue.effect_range;
-  const index = takes.findIndex((take) => take.id === current.id);
-  const panel = useRef(null);
-
-  useEffect(() => {
-    panel.current?.focus();
-    function onKey(event) {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); }
-      if (event.target.closest?.("video, input, textarea")) return;
-      if (event.key === "ArrowLeft" && index > 0) onPick(takes[index - 1].id);
-      if (event.key === "ArrowRight" && index < takes.length - 1) onPick(takes[index + 1].id);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [index, takes, onClose, onPick]);
-
-  return (
-    <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Take ${current.n}`} className="fixed inset-0 z-[120] flex flex-col bg-[#090908] outline-none">
-      <div className="flex h-12 flex-none items-center gap-2 px-3">
-        <Btn variant="ghost" onClick={onClose}><Icon name="chevRight" size={14} className="rotate-180" />Back to editing</Btn>
-        <span className="flex-1 text-center text-sm font-semibold text-ink tnum">Take {current.n}<span className="font-normal text-faint"> of {takes.length}</span></span>
-        <Btn size="sm" className="!h-8" onClick={() => onUse(current)}>Use these settings</Btn>
-        {downloads.length > 0 && (
-          <details className="relative">
-            <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-[10px] border border-line2 px-3 text-xs font-medium text-ink hover:bg-raised"><Icon name="download" size={14} />Download</summary>
-            <div className="absolute right-0 top-[calc(100%+6px)] z-20 flex w-52 flex-col rounded-[10px] border border-line2 bg-panel p-1 shadow-lg">
-              {downloads.map((item) => (
-                <a key={item.id} href={item.href} download={item.download || true} className="rounded-[6px] px-2.5 py-1.5 text-xs text-ink hover:bg-raised">{item.label}</a>
-              ))}
-            </div>
-          </details>
-        )}
-      </div>
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-2 sm:px-10">
-        <div className="relative aspect-video max-h-full w-full max-w-[1280px] overflow-hidden rounded-[12px] bg-black">
-          {media?.kind === "video" && <video key={`${media.url}-${loading.attempt}`} src={media.url} controls autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-contain" {...loading.handlers} />}
-          {media?.kind === "image" && <img key={`${media.url}-${loading.attempt}`} src={media.url} alt={`Styled frame of take ${current.n}`} className="absolute inset-0 h-full w-full object-contain" {...loading.handlers} />}
-          {media && <MediaLoading status={loading} />}
-          {!media && current.status === "running" && <div className="absolute inset-0 grid place-items-center text-sm text-mute">The first result shows here as soon as it is ready.</div>}
-          {current.status !== "done" && (
-            <div className="absolute bottom-4 left-1/2 z-10 flex w-[min(380px,90%)] -translate-x-1/2 flex-col gap-2 rounded-[12px] border border-line2 bg-panel/95 p-3.5 shadow-lg" role="status">
-              {stages.map((stage, i) => {
-                const at = stages.findIndex((item) => item.id === (current.status === "failed" ? current.failedStage : current.stage));
-                const state = current.status === "failed" && i === at ? "failed" : i < at ? "done" : i === at ? "run" : "next";
-                return (
-                  <div key={stage.id} className="flex items-center gap-2.5 text-xs">
-                    <span className={cx("grid h-5 w-5 flex-none place-items-center rounded-full", state === "done" && "bg-accent/20 text-accent", state === "run" && "border-2 border-accent", state === "failed" && "bg-err/20 text-err", state === "next" && "border border-line2")}>
-                      {state === "done" && <Icon name="check" size={11} />}{state === "failed" && <Icon name="x" size={11} />}
-                    </span>
-                    <span className={cx("flex-1", state === "next" ? "text-mute" : "font-medium text-ink")}>{stage.name}</span>
-                    <span className="text-faint tnum">{state === "run" ? `${clock(now - current.stageStarted)} · usually ~${stage.typical} s` : state === "next" ? `~${stage.typical} s` : ""}</span>
-                  </div>
-                );
-              })}
-              {current.status === "failed" && (
-                <div className="mt-1 flex flex-col gap-2 border-t border-line pt-2">
-                  <span className="text-xs text-mute">{current.error?.message || "This stage stopped."}</span>
-                  <Btn size="sm" variant="primary" icon="retry" className="self-start" onClick={() => onRetry(current)}>Retry from here</Btn>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      <p className="flex-none px-4 text-center text-xs text-faint tnum">
-        {lookById(current.settings.look).name} · seed {current.settings.cue.seed ?? 42}{range ? ` · frames ${range.start}–${range.end - 1}` : ""}{media?.guide ? " · guide pass" : ""}
-      </p>
-      <div className="flex flex-none items-center justify-center gap-2 overflow-x-auto px-4 py-3" role="listbox" aria-label="Takes">
-        {takes.map((take) => {
-          const on = take.id === current.id;
-          return (
-            <button key={take.id} type="button" role="option" aria-selected={on} onClick={() => onPick(take.id)}
-              className={cx("flex w-[156px] flex-none flex-col gap-1.5 rounded-[10px] border p-1.5 text-left", on ? "border-accent bg-raised" : "border-line hover:bg-raised")}>
-              <span className="relative block aspect-video w-full overflow-hidden rounded-[6px] bg-well">
-                <TakeThumb take={take} clip={clip} />
-                {take.status === "running" && <span className="absolute bottom-0 left-0 h-[3px] bg-accent" style={{ width: `${takeProgress(take, now)}%` }} />}
-              </span>
-              <span className="flex flex-col px-0.5 text-xs leading-4">
-                <span className="font-medium text-ink">{take.kind === "guide" ? `Take ${take.n} · guide` : `Take ${take.n}`}</span>
-                <span className={cx("tnum", take.status === "failed" ? "text-err" : take.status === "running" ? "text-accent" : "text-faint")}>{stageLine(take, now)}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 

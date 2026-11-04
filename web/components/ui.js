@@ -67,6 +67,8 @@ const ICONS = {
   even: "M4 7h16M4 12h16M4 17h16M8 5v4M12 10v4M16 15v4",
   stack: "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5",
   minus: "M5 12h14",
+  compare: "M4 5h16v14H4zM12 5v14",
+  expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
 };
 
 export function Icon({ name, size = 16, className, stroke = 2 }) {
