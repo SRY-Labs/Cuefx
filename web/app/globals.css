@@ -149,3 +149,6 @@ input[type="range"].compare-range { -webkit-appearance: none; appearance: none; 
 .section-title { font-family: var(--font-display), var(--font-ui), sans-serif; font-weight: 700; font-size: 24px; line-height: 30px; letter-spacing: -0.02em; }
 .preset-card:hover { border-color: rgb(var(--glow) / 0.45); }
 .hud-text { paint-order: stroke; stroke: rgb(0 0 0 / 0.75); stroke-width: 0.45px; stroke-linejoin: round; }
+
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

@@ -7,7 +7,7 @@ import {
 } from "../lib/cue";
 import { checkPrompt } from "../lib/prompt";
 import { LookStill } from "./LookStill";
-import { Btn, Icon, Note, Num, Slider, Tip, cx } from "./ui";
+import { Btn, Icon, Num, Slider, Tip, cx } from "./ui";
 
 const PART_NOTE = {
   palm: "Follows the open hand. Click the palm on the video if CueFX picks the wrong one.",
@@ -53,7 +53,11 @@ function Notes({ group, warnings }) {
   if (!notes.length) return null;
   return (
     <ul className="flex flex-col gap-1.5">
-      {notes.map((warning) => <li key={warning.id || warning.code}><Note severity={warning.severity}>{warning.message}</Note></li>)}
+      {notes.map((warning) => (
+        <li key={warning.id || warning.code} role="alert" className="flex items-start gap-2 rounded-[8px] border border-err/30 bg-err/[0.08] px-2.5 py-2 text-xs leading-[17px] text-ink">
+          <Icon name="alert" size={13} className="mt-0.5 flex-none text-err" /><span className="min-w-0 break-words">{warning.message}</span>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -100,6 +104,18 @@ function IconSeg({ label, value, options, notes, onChange, disabled }) {
   );
 }
 
+function PathBtn({ icon, label, tip, note, kbd, active, disabled, busy, onClick }) {
+  return (
+    <Tip title={tip} note={note} kbd={kbd} className="w-full">
+      <button type="button" aria-pressed={active === undefined ? undefined : active} disabled={disabled} onClick={onClick}
+        className={cx("flex h-[46px] w-full flex-col items-center justify-center gap-1 rounded-[8px] border text-[11px] font-medium disabled:opacity-40",
+          active ? "border-path/60 bg-path/15 text-path" : "border-line bg-field text-mute hover:border-line2 hover:text-ink")}>
+        <Icon name={busy ? "loader" : icon} size={15} className={busy ? "spin" : undefined} />{label}
+      </button>
+    </Tip>
+  );
+}
+
 function TextSeg({ label, value, options, onChange }) {
   return (
     <div role="radiogroup" aria-label={label} className="flex gap-0.5 rounded-[8px] border border-line bg-field p-0.5">
@@ -140,7 +156,7 @@ function PromptBox({ id, label, value, auto, onChange, onAuto, autoNote, customN
       </p>
       <textarea id={id} rows={4} value={value} onChange={(event) => onChange(event.target.value)}
         className={cx("w-full resize-y rounded-[8px] border bg-field px-2.5 py-2 text-xs leading-[18px] text-ink", error ? "border-err" : "border-line focus:border-accent")} />
-      {issues.filter((issue) => issue.severity !== "info").map((issue) => (
+      {issues.filter((issue) => issue.severity === "error").map((issue) => (
         <p key={issue.message} className={cx("flex items-start gap-1.5 text-[11.5px] leading-4", issue.severity === "error" ? "text-err" : "text-mute")}>
           <Icon name="alert" size={12} className={cx("mt-0.5 flex-none", issue.severity === "error" ? "text-err" : "text-warn")} />{issue.message}
         </p>
@@ -151,7 +167,7 @@ function PromptBox({ id, label, value, auto, onChange, onAuto, autoNote, customN
 
 export default function Inspector(props) {
   const {
-    cue, ready, anchor, switching, trackError, uncertain, picking, onPart, onSide, onPick, onShowUncertain,
+    cue, ready, anchor, switching, trackError, picking, onPart, onSide, onPick, drawing, onDraw, onSnapRelease,
     warnings, selected, setSelected, setFrame, frames, defaults, change, begin, end, onBehaviour, onLook,
     onReset, canReset, onEvenOut, evening, onAddPoint, onDeletePoint,
     prompt, promptAuto, onPrompt, onPromptAuto, promptStale, onPromptUpdate,
@@ -182,7 +198,7 @@ export default function Inspector(props) {
         {cue?.effect_range && <span className="text-xs text-faint tnum">f {cue.effect_range.start}–{cue.effect_range.end - 1}</span>}
       </div>
       <div className="px-4 pb-6 min-[901px]:min-h-0 min-[901px]:flex-1 min-[901px]:overflow-y-auto">
-        <Group id="anchor" icon="target" iconClass="text-track" title="Anchor" summary={anchorName} open={open.anchor} onToggle={() => toggle("anchor")} warn={!!trackError || has("anchor") || uncertain > 0}>
+        <Group id="anchor" icon="target" iconClass="text-track" title="Anchor" summary={anchorName} open={open.anchor} onToggle={() => toggle("anchor")} warn={!!trackError || has("anchor")}>
           <div role="radiogroup" aria-label="Body point" className="grid grid-cols-3 gap-1">
             {PARTS.map(([id, name]) => (
               <Tip key={id} title={name} note={PART_NOTE[id]} className="w-full">
@@ -206,13 +222,10 @@ export default function Inspector(props) {
             </Tip>
           </div>
           {switching && <p className="flex items-center gap-1.5 text-xs text-mute" role="status"><Icon name="loader" size={13} className="spin" />Tracking the {switching}… about 20 s. Your path, look and timing stay.</p>}
-          {trackError && <Note severity="error">{trackError}</Note>}
-          {ready && uncertain > 0 && (
-            <div className="flex items-center gap-2 text-xs text-warn">
-              <Icon name="alert" size={13} />Unsure on {uncertain} frame{uncertain === 1 ? "" : "s"}
-              <span className="flex-1" />
-              <button type="button" className="font-medium text-accent hover:underline" onClick={onShowUncertain}>Show</button>
-            </div>
+          {trackError && (
+            <p role="alert" className="flex items-start gap-2 rounded-[8px] border border-err/30 bg-err/[0.08] px-2.5 py-2 text-xs leading-[17px] text-ink">
+              <Icon name="alert" size={13} className="mt-0.5 flex-none text-err" /><span className="min-w-0 break-words">{trackError}</span>
+            </p>
           )}
           <Notes group="anchor" warnings={warnings} />
         </Group>
@@ -231,24 +244,20 @@ export default function Inspector(props) {
                 </div>
               </Prop>
               {!hold && (
-                <Prop label="Path">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="text-ink tnum">{Math.max(0, (cue.route?.length || 1) - 1)} point{(cue.route?.length || 1) === 2 ? "" : "s"}</span>
-                    <span className="flex-1" />
-                    <Tip title="Add point" note="Adds a point after the last one. Or press P and click the video." kbd="P">
-                      <button type="button" className="font-medium text-accent hover:underline" onClick={onAddPoint}>Add</button>
-                    </Tip>
-                    <Tip title="Reset path" note="Back to the path the editor opened with." >
-                      <button type="button" className="font-medium text-accent hover:underline disabled:text-faint disabled:no-underline" disabled={!canReset} onClick={onReset}>Reset</button>
-                    </Tip>
-                    <Tip title="Even out" note="Re-times the points between release and the last one to a constant speed." align="end">
-                      <button type="button" className="font-medium text-accent hover:underline disabled:text-faint disabled:no-underline" disabled={evening || (cue.route?.length || 0) < 3} onClick={onEvenOut}>{evening ? "Timing…" : "Even out"}</button>
-                    </Tip>
+                <Prop label="Path" top>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="pt-1.5 text-ink tnum">{Math.max(0, (cue.route?.length || 1) - 1)} point{(cue.route?.length || 1) === 2 ? "" : "s"} after the release</span>
+                    <div className="grid grid-cols-4 gap-1">
+                      <PathBtn icon="pen" label="Draw" active={drawing} onClick={onDraw} tip="Draw path" note="Click the video to add points after the last one." kbd="P" />
+                      <PathBtn icon="plus" label="Add" onClick={onAddPoint} tip="Add point" note="Adds one point after the last, to drag into place." />
+                      <PathBtn icon="even" label="Even out" onClick={onEvenOut} disabled={evening || (cue.route?.length || 0) < 3} busy={evening} tip="Even out" note="Re-times the points to a constant speed. Positions stay." />
+                      <PathBtn icon="retry" label="Reset" onClick={onReset} disabled={!canReset} tip="Reset path" note="Back to the path the editor opened with." />
+                    </div>
                   </div>
                 </Prop>
               )}
               {!hold && point && (
-                <div className="-mx-2.5 flex flex-col gap-2.5 rounded-[10px] border border-path/30 bg-path/[0.07] p-2.5">
+                <div className="flex flex-col gap-2.5 rounded-[10px] border border-path/30 bg-path/[0.07] p-2.5">
                   <div className="flex items-center justify-between text-xs font-semibold text-path">
                     {selected === 0 ? "Release point" : `Point ${selected}`}
                     <span className="flex items-center gap-1">
@@ -263,7 +272,19 @@ export default function Inspector(props) {
                     </span>
                   </div>
                   {selected === 0 ? (
-                    <p className="text-[11.5px] leading-4 text-mute">The path starts on the body point at release, frame {point.f}. Change the release in Timing or drag it on the timeline.</p>
+                    point.x == null ? (
+                      <p className="text-[11.5px] leading-4 text-mute">Starts on the body point at frame {point.f}. Drag it on the video to start the flight somewhere else.</p>
+                    ) : (
+                      <>
+                        <Prop label="Position">
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <Num value={Math.round(point.x)} min={-2000} max={4000} onChange={(value) => change({ ...cue, route: cue.route.map((item, i) => (i === 0 ? { ...item, x: Math.round(value) } : item)) })} />
+                            <Num value={Math.round(point.y)} min={-2000} max={3000} onChange={(value) => change({ ...cue, route: cue.route.map((item, i) => (i === 0 ? { ...item, y: Math.round(value) } : item)) })} />
+                          </div>
+                        </Prop>
+                        <Btn size="sm" icon="target" className="self-start" onClick={onSnapRelease}>Back on the body point</Btn>
+                      </>
+                    )
                   ) : (
                     <>
                       <Prop label="Frame"><Num value={point.f} min={0} max={frames - 1} onChange={(value) => { const next = setPointFrame(cue, selected, value); change(next); setFrame(next.route[selected].f); }} /></Prop>

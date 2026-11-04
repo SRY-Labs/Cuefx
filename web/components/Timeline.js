@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { holdsOnBody, phaseTimes, timecode, trackRuns } from "../lib/cue";
 import { Icon, Tip, cx } from "./ui";
 
-const LANE = { ruler: 22, track: 20, phases: 30, points: 24 };
+const LANE = { ruler: 22, track: 28, phases: 28, points: 28 };
 const PHASE = {
   entrance: { token: "--c-ph-entrance", label: "Entrance", background: "rgb(var(--c-ph-entrance) / 0.22)" },
   held: { token: "--c-ph-held", label: "Held", background: "rgb(var(--c-ph-held) / 0.32)" },
@@ -193,11 +193,11 @@ export default function Timeline({
       <div className="flex">
         <div className="w-[84px] flex-none border-r border-line text-xs text-mute">
           <div className="border-b border-line" style={{ height: LANE.ruler }} />
-          <div className="flex items-center gap-1.5 border-b border-line px-2 text-track" style={{ height: LANE.track }}><Icon name="target" size={12} />Tracking</div>
+          <div className="flex items-center gap-1.5 border-b border-line px-2 text-track" style={{ height: LANE.track }}><Icon name={state === "ready" ? "check" : "target"} size={12} />{state === "ready" ? "Tracked" : "Tracking"}</div>
           <div className="flex items-center gap-1.5 border-b border-line px-2" style={{ height: LANE.phases }}><Icon name="sparkle" size={12} className="text-faint" />Effect</div>
           <div className="flex items-center gap-1.5 px-2" style={{ height: LANE.points }}><Icon name="route" size={12} className="text-faint" />Path</div>
         </div>
-        <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
+        <div ref={scrollRef} className="no-scrollbar min-w-0 flex-1 overflow-x-auto" onWheel={(event) => { if (zoom > 1 && Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY; }}>
           <div ref={contentRef} className="relative select-none" style={{ width: total }} onPointerDown={clip ? scrub : undefined}>
             <div className="relative cursor-ew-resize border-b border-line" style={{ height: LANE.ruler }}>
               {Array.from({ length: Math.floor((frames - 1) / step) + 1 }, (_, i) => i * step).map((tick) => (
@@ -209,14 +209,14 @@ export default function Timeline({
               )}
             </div>
             <div className="relative border-b border-line bg-lane" style={{ height: LANE.track }}>
-              {state === "upload" && <span className="absolute inset-y-[7px] left-0 right-0 rounded-full bg-raised" />}
-              {state === "track" && <span className="bar-tracking absolute inset-y-[7px] left-0 right-0 rounded-full" />}
-              {state === "failed" && <span className="absolute inset-y-[7px] left-0 right-0 rounded-full bg-err/30" />}
+              {state === "upload" && <span className="absolute inset-y-[11px] left-0 right-0 rounded-full bg-raised" />}
+              {state === "track" && <span className="bar-tracking absolute inset-y-[11px] left-0 right-0 rounded-full" />}
+              {state === "failed" && <span className="absolute inset-y-[11px] left-0 right-0 rounded-full bg-err/30" />}
               {state === "ready" && runs.map((run) => (
-                <span key={run.start} className="absolute inset-y-[6px] rounded-full" title={run.uncertain ? `Unsure · frames ${run.start}–${run.end - 1}` : `Tracked · frames ${run.start}–${run.end - 1}`} style={{
+                <span key={run.start} className="absolute inset-y-[11px] first:rounded-l-full last:rounded-r-full" title={`Tracked · frames ${run.start}–${run.end - 1}`} style={{
                   left: run.start * ppf,
                   width: Math.max(ppf, (run.end - run.start) * ppf),
-                  background: run.uncertain ? "rgb(var(--c-warn))" : "rgb(var(--c-track) / 0.85)",
+                  background: "rgb(var(--c-track) / 0.85)",
                 }} />
               ))}
             </div>
@@ -235,13 +235,13 @@ export default function Timeline({
                 <div key={key} data-handle="1" role="slider" tabIndex={0} aria-label={`${label}, frame ${at}`} aria-valuenow={at} aria-valuemin={0} aria-valuemax={frames} title={`${label} · f ${at}`}
                   className="absolute top-0 bottom-0 z-10 -ml-[6px] flex w-[13px] cursor-ew-resize items-center justify-center focus-visible:outline-2" style={{ left: at * ppf }}
                   onPointerDown={(event) => dragEdge(event, key, at)} onKeyDown={(event) => edgeKey(event, key, at)}>
-                  <span className="h-[20px] w-[3px] rounded-full bg-ink opacity-70" />
+                  <span className="h-[18px] w-[3px] rounded-full bg-ink opacity-70" />
                 </div>
               ))}
               {takeRange && <span className="pointer-events-none absolute top-0 h-[3px] rounded bg-accent" style={{ left: takeRange.start * ppf, width: (takeRange.end - takeRange.start) * ppf }} />}
             </div>
             <div className="relative bg-lane" style={{ height: LANE.points }}>
-              {ready && hold && <div className="px-2 text-2xs leading-[24px] text-faint">{cue.behaviour === "orbit" ? "Orbit stays on the body point: no path." : "Hold stays on the body point: no path."}</div>}
+              {ready && hold && <div className="px-2 text-2xs leading-[28px] text-faint">{cue.behaviour === "orbit" ? "Orbit stays on the body point: no path." : "Hold stays on the body point: no path."}</div>}
               {ready && !hold && (cue.route || []).map((point, index) => {
                 const on = selected === index;
                 return (

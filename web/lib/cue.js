@@ -164,8 +164,8 @@ export function anchorAt(cue, point) {
 export function drawnRoute(cue, anchor) {
   return (cue.route || []).map((point, index) => ({
     ...point,
-    x: index === 0 ? anchor?.x ?? point.x : point.x,
-    y: index === 0 ? anchor?.y ?? point.y : point.y,
+    x: index === 0 ? (point.x ?? anchor?.x ?? null) : point.x,
+    y: index === 0 ? (point.y ?? anchor?.y ?? null) : point.y,
   }));
 }
 
@@ -352,6 +352,13 @@ export function addPathPoint(cue, x, y) {
 export function movePathPoint(cue, index, x, y) {
   if (index < 1 || !cue.route?.[index]) return cue;
   return { ...cue, route: cue.route.map((point, i) => (i === index ? { ...point, x: Math.round(x), y: Math.round(y) } : point)) };
+}
+
+/** The release point sits on the body unless moved; a moved release has its own position (null puts it back). */
+export function moveRelease(cue, x, y) {
+  if (!cue.route?.length) return cue;
+  const at = (value) => (value == null ? null : Math.round(value));
+  return { ...cue, route: cue.route.map((point, i) => (i === 0 ? { ...point, x: at(x), y: at(y) } : point)) };
 }
 
 export function deletePathPoint(cue, index) {

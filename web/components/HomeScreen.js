@@ -41,7 +41,7 @@ function fileSeconds(file) {
 const BEHAVIOUR_TAG = { hold_throw: "Hold + throw", charge_up: "Charge up", orbit: "Orbit", hold: "Hold" };
 const LOOK_GLOW = { fireball: "255 179 92", blue_plasma: "159 212 255", electric_orb: "214 200 255", ice_sphere: "223 244 255", shadow_energy: "154 115 230" };
 
-export default function HomeScreen({ onStart, onOpen }) {
+export default function HomeScreen({ onStart, onOpen, server }) {
   const [clips, setClips] = useState(null);
   const [setup, setSetup] = useState({ clip: "sample", file: null, seconds: null, preset: "plasma_charge" });
   const [fileError, setFileError] = useState(null);
@@ -95,7 +95,15 @@ export default function HomeScreen({ onStart, onOpen }) {
       onDragOver={(event) => { if ([...(event.dataTransfer?.types || [])].includes("Files")) { event.preventDefault(); setDragging(true); } }}
       onDragLeave={(event) => { if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget)) setDragging(false); }}
       onDrop={onDrop}>
-      <section ref={top} className="mx-auto flex max-w-[1200px] scroll-mt-4 flex-col items-center px-4 pt-12 pb-10 text-center sm:px-6 sm:pt-16">
+      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-2 px-4 sm:px-6">
+        <span className="grid h-7 w-8 place-items-center rounded-[7px] bg-accent text-on-accent">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 18c4-9 10-12 16-12M17 3l3 3-3 3" /><circle cx="6" cy="17" r="2" /></svg>
+        </span>
+        <span className="t-h2 text-ink">CueFX</span>
+        <span className="flex-1" />
+        <ServerMark server={server} />
+      </div>
+      <section ref={top} className="mx-auto flex max-w-[1200px] scroll-mt-4 flex-col items-center px-4 pt-6 pb-10 text-center sm:px-6 sm:pt-10">
         <span className="inline-flex h-7 items-center gap-2 rounded-full border border-line2 px-3 t-overline text-mute">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Directed VFX · ComfyUI + LTX-2.5
@@ -188,7 +196,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
               <button type="button" role="option" aria-selected={false} onClick={() => { setOpen(null); onChooseFile(); }}
                 className="flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised">
                 <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] border border-dashed border-line2 text-accent"><Icon name="upload" size={16} /></span>
-                <span className="flex min-w-0 flex-1 flex-col"><span className="text-sm font-medium text-ink">{setup.file ? "Choose a different file" : "Upload from your computer"}</span><span className="text-xs text-faint">mp4, mov, mkv or webm · up to 15 s</span></span>
+                <span className="flex min-w-0 flex-1 flex-col"><span className="text-sm font-medium text-ink">{setup.file ? "A different clip" : "Your clip"}</span><span className="text-xs text-faint">Choose a file · up to 15 s, one person in frame</span></span>
               </button>
             </li>
           </ul>
