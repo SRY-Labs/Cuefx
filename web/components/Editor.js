@@ -639,7 +639,7 @@ export default function Editor({ source, preset, onBack }) {
 
   function goHome() {
     if (running) {
-      say("A take is still rendering", { tone: "warn", detail: "Leaving stops following it here.", actions: [{ label: "Leave", run: onBack }, { label: "Stay", run: () => setToast(null) }] });
+      say("A take is still rendering", { tone: "warn", detail: "Leaving stops following it here.", action: { label: "Leave", run: onBack } });
       return;
     }
     onBack();
@@ -677,7 +677,7 @@ export default function Editor({ source, preset, onBack }) {
   } else if (trackState === "failed" && trackError && !picking) {
     notice = { tone: "error", text: "Tracking did not find it", detail: trackError, actions: [{ label: "Pick on the video", run: togglePick }, { label: "Try again", run: () => track(clip, anchor) }] };
   } else if (picking) {
-    notice = { text: `Click the ${picking.part === "head" ? "head" : `${picking.side} ${picking.part}`} on the video`, detail: "CueFX tracks the point you click.", kbd: "Esc", actions: [{ label: "Cancel", run: () => setPicking(null) }] };
+    notice = { text: `Click the ${picking.part === "head" ? "head" : `${picking.side} ${picking.part}`} on the video`, detail: "CueFX tracks the point you click. Esc cancels.", onClose: () => setPicking(null), closeLabel: "Cancel picking" };
   } else if (trackState === "upload" && upload) {
     notice = {
       busy: true,
@@ -869,7 +869,7 @@ function ToolBtn({ icon, label, note, kbd, active, disabled, onClick }) {
 /**
  * The app's one place for messages, at the top centre under the bar. A toast (a result, with an optional action)
  * shows for a few seconds and then gives the place back to the standing notice (work in progress, a mode, or a
- * problem with its fixes). Only one shows at a time, so a message is never repeated somewhere else.
+ * problem with its fixes). Buttons appear only for real next steps; cancelling or closing is the x on the right. Only one shows at a time, so a message is never repeated somewhere else.
  */
 const TONE_ICON = { success: ["checkCircle", "text-ink"], error: ["alert", "text-err"], warn: ["alert", "text-warn"], info: ["info", "text-mute"] };
 
@@ -887,18 +887,19 @@ function Snackbar({ toast, notice, onClose }) {
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-[13px] font-semibold leading-[18px] tnum">{item.text}</span>
           {item.detail && <span className="mt-0.5 text-[13px] leading-[18px] text-faint">{item.detail}</span>}
-          {(actions.length > 0 || item.kbd) && (
+          {actions.length > 0 && (
             <div className="mt-2.5 flex flex-wrap items-center gap-1">
               {actions.map((action, i) => (
                 i === 0
                   ? <Btn key={action.label} size="sm" onClick={() => { if (toast) onClose(); action.run(); }}>{action.label}</Btn>
                   : <button key={action.label} type="button" className="h-7 rounded-[8px] px-2 text-xs font-medium text-mute hover:text-ink hover:underline" onClick={() => { if (toast) onClose(); action.run(); }}>{action.label}</button>
               ))}
-              {item.kbd && <span className="ml-1 text-xs text-faint">or press <kbd className="rounded-[4px] bg-sel px-1.5 font-sans text-[10px] font-medium text-mute">{item.kbd}</kbd></span>}
             </div>
           )}
         </div>
-        {toast && <button type="button" aria-label="Dismiss" className="-mt-1 inline-flex h-7 w-7 flex-none items-center justify-center rounded-[8px] text-faint hover:bg-raised hover:text-ink" onClick={onClose}><Icon name="x" size={13} /></button>}
+        {(toast || item.onClose) && (
+          <button type="button" aria-label={toast ? "Dismiss" : item.closeLabel || "Close"} className="-mt-1 inline-flex h-7 w-7 flex-none items-center justify-center rounded-[8px] text-faint hover:bg-raised hover:text-ink" onClick={toast ? onClose : item.onClose}><Icon name="x" size={13} /></button>
+        )}
       </div>
       {!toast && item.busy && (
         <span className="h-[2px] w-full bg-line2">
