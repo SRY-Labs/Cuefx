@@ -193,3 +193,6 @@ export async function pollVideo(videoId, { signal, onVideo } = {}) {
     await delay(1500, signal);
   }
 }
+
+// Re-times the path points between release and the last point to a constant speed (cue.route.propose_route_timing).
+export const proposeTiming = (cue, signal) => request("POST", "/api/v1/cue/timing", { json: { cue }, signal });

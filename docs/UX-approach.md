@@ -1,5 +1,7 @@
 # CueFX: UX approach for the landing page and first-run flow
 
+> The four-step flow (Upload, Track, Direct, Render) described below has been replaced by one editor workspace. See [UX-editor-workspace.md](UX-editor-workspace.md).
+
 For the SRY Labs team. This explains what we changed in the CueFX web app, why, and what is still open. Everything described here is on the `ux/landing-and-flow` branch. Only the web app (`web/`) changed. Nothing in the server changed.
 
 ---

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { listClips } from "../lib/api";
+import { clipUploadIssue, listClips } from "../lib/api";
 import { LOOKS, clipLine } from "../lib/cue";
 import { HERO_FPS, HERO_FRAMES, HERO_PATH } from "../lib/heroPath";
-import { BAR_BEHAVIOURS, BAR_PARTS, PRESETS, presetFrom } from "../lib/presets";
-import { LookStill } from "./LookPicker";
+import { PRESETS, presetById } from "../lib/presets";
+import { LookStill } from "./LookStill";
 import { Icon, cx } from "./ui";
 
 // Phases of the directed showcase take, in frames at 30 fps (read off the video).
@@ -23,57 +23,107 @@ const TAKES = {
   prompted: { src: "/showcase/2_problem_web.mp4", poster: "/showcase/prompted.jpg", note: "Prompt only: the effect leaves the body." },
 };
 
-const CLIPS = [
-  { id: "sample", name: "Sample · rooftop kick", note: "Ready to go, no upload" },
-  { id: "upload", name: "Your clip", note: "Choose a file when you start" },
-];
+const ACCEPT = "video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm";
+
+function fileSeconds(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    const done = (value) => { URL.revokeObjectURL(url); resolve(value); };
+    const timer = setTimeout(() => done(null), 4000);
+    video.preload = "metadata";
+    video.onloadedmetadata = () => { clearTimeout(timer); done(Number.isFinite(video.duration) ? video.duration : null); };
+    video.onerror = () => { clearTimeout(timer); done(null); };
+    video.src = url;
+  });
+}
 
 const BEHAVIOUR_TAG = { hold_throw: "Hold + throw", charge_up: "Charge up", orbit: "Orbit", hold: "Hold" };
 const LOOK_GLOW = { fireball: "255 179 92", blue_plasma: "159 212 255", electric_orb: "214 200 255", ice_sphere: "223 244 255", shadow_energy: "154 115 230" };
 
 export default function HomeScreen({ onStart, onOpen }) {
   const [clips, setClips] = useState(null);
-  const [setup, setSetup] = useState({ clip: "sample", track: 0, behaviour: "hold_throw", look: "blue_plasma" });
+  const [setup, setSetup] = useState({ clip: "sample", file: null, seconds: null, preset: "plasma_charge" });
+  const [fileError, setFileError] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const top = useRef(null);
+  const fileInput = useRef(null);
 
   useEffect(() => { listClips().then(setClips).catch(() => setClips([])); }, []);
 
+  async function pickFile(file) {
+    if (!file) return;
+    setChecking(true);
+    setFileError(null);
+    const issue = await clipUploadIssue(file);
+    const seconds = issue ? null : await fileSeconds(file);
+    setChecking(false);
+    if (issue) {
+      setFileError({ ...issue, name: file.name });
+      setSetup((current) => ({ ...current, clip: "sample", file: null, seconds: null }));
+      return;
+    }
+    setSetup((current) => ({ ...current, clip: "file", file, seconds }));
+  }
+
   function start() {
-    const look = LOOKS.find((item) => item.id === setup.look) || LOOKS[1];
-    const point = BAR_PARTS[setup.track] || BAR_PARTS[0];
-    onStart({
-      useSample: setup.clip === "sample",
-      preset: presetFrom({ behaviour: setup.behaviour, look: look.id, lookName: look.name }),
-      track: { part: point.part, side: point.side },
-    });
+    const preset = presetById(setup.preset);
+    if (setup.clip === "file") {
+      if (!setup.file) { fileInput.current?.click(); return; }
+      onStart({ source: { kind: "file", file: setup.file }, preset });
+      return;
+    }
+    onStart({ source: { kind: "sample" }, preset });
   }
 
   // A preset card fills the bar and brings it back into view, so there is one place where a shot is set up.
   function applyPreset(preset) {
-    setSetup((current) => ({ ...current, behaviour: preset.behaviour, look: preset.look }));
+    setSetup((current) => ({ ...current, preset: preset.id }));
     top.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function onDrop(event) {
+    event.preventDefault();
+    setDragging(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (file) pickFile(file);
+  }
+
   return (
-    <main className="h-full overflow-y-auto bg-bg">
+    <main className="relative h-full overflow-y-auto bg-bg"
+      onDragOver={(event) => { if ([...(event.dataTransfer?.types || [])].includes("Files")) { event.preventDefault(); setDragging(true); } }}
+      onDragLeave={(event) => { if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget)) setDragging(false); }}
+      onDrop={onDrop}>
       <section ref={top} className="mx-auto flex max-w-[1200px] scroll-mt-4 flex-col items-center px-4 pt-12 pb-10 text-center sm:px-6 sm:pt-16">
         <span className="inline-flex h-7 items-center gap-2 rounded-full border border-line2 px-3 t-overline text-mute">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Directed VFX · ComfyUI + LTX-2.5
         </span>
         <h1 className="hero-title mt-5 max-w-[900px] text-ink">Direct the effect.<br />Don&apos;t just prompt it.</h1>
-        <p className="mt-4 max-w-[620px] text-[17px] leading-[26px] text-mute">
-          CueFX tracks the body in your clip, lets you draw where the effect goes, and renders it on your footage. The shot below is set up and ready.
+        <p className="mt-4 max-w-[580px] text-[17px] leading-[26px] text-mute">
+          Stick an effect to the body, draw where it flies, and render it onto your footage.
         </p>
-        <DirectBar setup={setup} setSetup={setSetup} onStart={start} />
-        <p className="mt-3 text-[13px] text-faint">Up to 15 seconds · one person in frame · about a minute to a first preview</p>
+        <DirectBar setup={setup} setSetup={setSetup} onStart={start} onChooseFile={() => fileInput.current?.click()} checking={checking} />
+        {fileError ? (
+          <p className="mt-3 flex flex-wrap items-center justify-center gap-2 text-[13px] text-err" role="alert">
+            {fileError.message}
+            <button type="button" className="font-medium text-accent hover:underline" onClick={() => fileInput.current?.click()}>Choose another clip</button>
+          </p>
+        ) : (
+          <p className="mt-3 text-[13px] text-faint">Or drop a video anywhere on this page · up to 15 seconds, one person in frame</p>
+        )}
+        <input ref={fileInput} type="file" accept={ACCEPT} className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; pickFile(file); }} />
       </section>
 
       <div className="mx-auto flex max-w-[1200px] flex-col gap-14 px-4 pb-16 sm:px-6">
         <Monitor />
         <Presets onPreset={applyPreset} />
-        {clips && clips.length > 0 && <RecentClips clips={clips} onOpen={onOpen} />}
+        {clips && clips.length > 0 && <RecentClips clips={clips} onOpen={(clip) => onOpen(clip, presetById(setup.preset))} />}
       </div>
+      {dragging && (
+        <div className="pointer-events-none fixed inset-3 z-50 grid place-items-center rounded-[20px] border-2 border-dashed border-accent bg-bg/85 text-lg font-semibold text-ink">Drop to use this clip</div>
+      )}
     </main>
   );
 }
@@ -81,10 +131,10 @@ export default function HomeScreen({ onStart, onOpen }) {
 /* ------------------------------------------------------------------ the direct bar */
 
 /**
- * The shot set up in four choices, in the order the flow runs: clip, body point, behaviour, look.
- * Every chip is a real control; "Try this shot" starts the flow with all four already applied.
+ * The shot set up in two choices: the clip, and a preset that sets the starting look and behaviour. The body
+ * point, path and everything else are set in the editor, where they can be seen on the clip.
  */
-function DirectBar({ setup, setSetup, onStart }) {
+function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
   const [open, setOpen] = useState(null);
   const bar = useRef(null);
 
@@ -97,75 +147,86 @@ function DirectBar({ setup, setSetup, onStart }) {
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", key); };
   }, [open]);
 
-  const look = LOOKS.find((item) => item.id === setup.look) || LOOKS[1];
-  const point = BAR_PARTS[setup.track] || BAR_PARTS[0];
-  const behaviour = BAR_BEHAVIOURS.find((item) => item.id === setup.behaviour) || BAR_BEHAVIOURS[0];
-  const clip = CLIPS.find((item) => item.id === setup.clip) || CLIPS[0];
-  const pick = (patch) => { setSetup((current) => ({ ...current, ...patch })); setOpen(null); };
-
-  const chips = [
-    {
-      id: "clip", label: "Clip", value: clip.name, tone: "text-mute",
-      icon: <Icon name="film" size={16} className="flex-none text-mute" />,
-      options: CLIPS.map((item) => ({ key: item.id, name: item.name, note: item.note, selected: item.id === setup.clip, pick: () => pick({ clip: item.id }) })),
-    },
-    {
-      id: "track", label: "Track", value: point.name, tone: "text-track",
-      options: BAR_PARTS.map((item, index) => ({ key: item.name, name: item.name, selected: index === setup.track, pick: () => pick({ track: index }) })),
-    },
-    {
-      id: "behaviour", label: "Path", value: behaviour.name, tone: "text-path",
-      options: BAR_BEHAVIOURS.map((item) => ({ key: item.id, name: item.name, note: item.note, selected: item.id === setup.behaviour, pick: () => pick({ behaviour: item.id }) })),
-    },
-    {
-      id: "look", label: "Look", value: look.name, tone: "text-mute",
-      icon: <span className="block h-6 w-6 flex-none overflow-hidden rounded-full bg-black"><LookStill id={look.id} className="h-full w-full" /></span>,
-      options: LOOKS.map((item) => ({ key: item.id, name: item.name, note: item.note, selected: item.id === setup.look, pick: () => pick({ look: item.id }), art: item.id })),
-    },
-  ];
+  const preset = presetById(setup.preset) || PRESETS[0];
+  const fileName = setup.file?.name;
+  const clipValue = checking ? "Checking the clip…" : setup.clip === "file" && fileName ? `${fileName}${setup.seconds ? ` · ${Math.round(setup.seconds)} s` : ""}` : "Sample · rooftop kick";
 
   return (
     <div ref={bar} role="group" aria-label="Shot setup"
-      className="mt-8 flex w-full max-w-[1040px] flex-col gap-1 rounded-[20px] border border-line2 bg-panel p-2 text-left sm:flex-row sm:items-center">
-      {chips.map((chip, index) => (
-        <div key={chip.id} className="flex items-center">
-          {index > 0 && <span aria-hidden="true" className="mr-1 hidden h-7 w-px flex-none bg-line sm:block" />}
-          <div className="relative w-full sm:w-auto">
-            <button type="button" aria-haspopup="listbox" aria-expanded={open === chip.id} onClick={() => setOpen(open === chip.id ? null : chip.id)}
-              className={cx("flex h-[52px] w-full items-center gap-2.5 rounded-[14px] px-3.5 text-left transition-colors hover:bg-raised", open === chip.id && "bg-raised")}>
-              {chip.icon}
-              <span className="flex min-w-0 flex-col">
-                <span className={cx("t-overline", chip.tone)}>{chip.label}</span>
-                <span className="truncate text-sm font-medium text-ink">{chip.value}</span>
-              </span>
-              <Icon name="chevDown" size={14} className="ml-auto flex-none text-faint sm:ml-1" />
-            </button>
-            {open === chip.id && (
-              <ul role="listbox" aria-label={chip.label}
-                className="absolute top-[calc(100%+8px)] left-0 z-20 flex w-[260px] flex-col gap-0.5 rounded-[14px] border border-line2 bg-panel p-1.5 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]">
-                {chip.options.map((option) => (
-                  <li key={option.key}>
-                    <button type="button" role="option" aria-selected={option.selected} onClick={option.pick}
-                      className={cx("flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised", option.selected && "bg-raised")}>
-                      {option.art && <span className="block h-7 w-7 flex-none overflow-hidden rounded-full bg-black"><LookStill id={option.art} className="h-full w-full" /></span>}
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="text-sm font-medium text-ink">{option.name}</span>
-                        {option.note && <span className="truncate text-xs text-faint">{option.note}</span>}
-                      </span>
-                      {option.selected && <Icon name="check" size={14} className="flex-none text-accent" />}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+      className="mt-8 flex w-full max-w-[760px] flex-col gap-1 rounded-[20px] border border-line2 bg-panel p-2 text-left sm:flex-row sm:items-center">
+      <div className="relative w-full sm:w-auto sm:min-w-0">
+        <button type="button" aria-haspopup="listbox" aria-expanded={open === "clip"} onClick={() => setOpen(open === "clip" ? null : "clip")}
+          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[14px] px-3.5 text-left transition-colors hover:bg-raised", open === "clip" && "bg-raised")}>
+          {setup.clip === "file" ? <Icon name="film" size={18} className="flex-none text-mute" /> : <img src="/showcase/input.jpg" alt="" className="h-7 w-11 flex-none rounded-[6px] object-cover" />}
+          <span className="flex min-w-0 flex-col">
+            <span className="t-overline text-mute">Clip</span>
+            <span className="max-w-[260px] truncate text-sm font-medium text-ink">{clipValue}</span>
+          </span>
+          <Icon name="chevDown" size={14} className="ml-auto flex-none text-faint sm:ml-1" />
+        </button>
+        {open === "clip" && (
+          <ul role="listbox" aria-label="Clip" className="absolute top-[calc(100%+8px)] left-0 z-20 flex w-[330px] max-w-[calc(100vw-48px)] flex-col gap-0.5 rounded-[14px] border border-line2 bg-panel p-1.5 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]">
+            <li>
+              <button type="button" role="option" aria-selected={setup.clip === "sample"} onClick={() => { setSetup((current) => ({ ...current, clip: "sample" })); setOpen(null); }}
+                className={cx("flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised", setup.clip === "sample" && "bg-raised")}>
+                <img src="/showcase/input.jpg" alt="" className="h-8 w-14 flex-none rounded-[6px] object-cover" />
+                <span className="flex min-w-0 flex-1 flex-col"><span className="text-sm font-medium text-ink">Sample · rooftop kick</span><span className="text-xs text-faint">8 s · ready, nothing to upload</span></span>
+                {setup.clip === "sample" && <Icon name="check" size={14} className="flex-none text-accent" />}
+              </button>
+            </li>
+            {setup.file && (
+              <li>
+                <button type="button" role="option" aria-selected={setup.clip === "file"} onClick={() => { setSetup((current) => ({ ...current, clip: "file" })); setOpen(null); }}
+                  className={cx("flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised", setup.clip === "file" && "bg-raised")}>
+                  <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] bg-raised text-mute"><Icon name="film" size={16} /></span>
+                  <span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-sm font-medium text-ink">{setup.file.name}</span><span className="text-xs text-faint">{setup.seconds ? `${Math.round(setup.seconds)} s · ` : ""}uploads when you start</span></span>
+                  {setup.clip === "file" && <Icon name="check" size={14} className="flex-none text-accent" />}
+                </button>
+              </li>
             )}
-          </div>
-        </div>
-      ))}
+            <li>
+              <button type="button" role="option" aria-selected={false} onClick={() => { setOpen(null); onChooseFile(); }}
+                className="flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised">
+                <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] border border-dashed border-line2 text-accent"><Icon name="upload" size={16} /></span>
+                <span className="flex min-w-0 flex-1 flex-col"><span className="text-sm font-medium text-ink">{setup.file ? "Choose a different file" : "Upload from your computer"}</span><span className="text-xs text-faint">mp4, mov, mkv or webm · up to 15 s</span></span>
+              </button>
+            </li>
+          </ul>
+        )}
+      </div>
+      <span aria-hidden="true" className="hidden h-7 w-px flex-none bg-line sm:block" />
+      <div className="relative w-full sm:w-auto">
+        <button type="button" aria-haspopup="listbox" aria-expanded={open === "preset"} onClick={() => setOpen(open === "preset" ? null : "preset")}
+          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[14px] px-3.5 text-left transition-colors hover:bg-raised", open === "preset" && "bg-raised")}>
+          <span className="block h-7 w-7 flex-none overflow-hidden rounded-full bg-black"><LookStill id={preset.look} className="h-full w-full" /></span>
+          <span className="flex min-w-0 flex-col">
+            <span className="t-overline text-mute">Preset</span>
+            <span className="truncate text-sm font-medium text-ink">{preset.name}</span>
+          </span>
+          <Icon name="chevDown" size={14} className="ml-auto flex-none text-faint sm:ml-1" />
+        </button>
+        {open === "preset" && (
+          <ul role="listbox" aria-label="Preset" className="absolute top-[calc(100%+8px)] left-0 z-20 grid w-[min(440px,calc(100vw-48px))] grid-cols-2 gap-1 rounded-[14px] border border-line2 bg-panel p-1.5 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]">
+            {PRESETS.map((item) => (
+              <li key={item.id}>
+                <button type="button" role="option" aria-selected={item.id === setup.preset} onClick={() => { setSetup((current) => ({ ...current, preset: item.id })); setOpen(null); }}
+                  className={cx("flex w-full flex-col gap-1.5 rounded-[10px] border p-1.5 text-left hover:bg-raised", item.id === setup.preset ? "border-accent bg-raised" : "border-transparent")}>
+                  <span className="relative block h-16 w-full overflow-hidden rounded-[8px] bg-black">
+                    <LookStill id={item.look} className="mx-auto h-full w-16" />
+                    <span className="absolute bottom-1 right-1.5 text-faint"><MotionGlyph behaviour={item.behaviour} /></span>
+                  </span>
+                  <span className="px-0.5 text-[13px] font-medium text-ink">{item.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <span className="hidden flex-1 sm:block" />
-      <button type="button" onClick={onStart}
-        className="mt-1 inline-flex h-[52px] flex-none items-center justify-center gap-2 rounded-[14px] bg-accent px-6 text-[15px] font-medium text-on-accent transition-colors hover:bg-accent-hi sm:mt-0">
-        <Icon name={setup.clip === "sample" ? "play" : "upload"} size={16} />
-        {setup.clip === "sample" ? "Try this shot" : "Choose a clip"}
+      <button type="button" onClick={onStart} disabled={checking}
+        className="mt-1 inline-flex h-[56px] flex-none items-center justify-center gap-2 rounded-[14px] bg-accent px-6 text-[15px] font-medium text-on-accent transition-colors hover:bg-accent-hi disabled:opacity-50 sm:mt-0">
+        {setup.clip === "file" && setup.file ? "Start this shot" : setup.clip === "file" ? "Choose a clip" : "Try this shot"}
+        <Icon name="chevRight" size={16} />
       </button>
     </div>
   );
@@ -291,7 +352,7 @@ function MotionGlyph({ behaviour }) {
 function Presets({ onPreset }) {
   return (
     <section className="flex flex-col gap-5 border-t border-line pt-10">
-      <SectionHead overline="Presets" title="Start from a preset" body="A preset sets the path and the look in the bar above. You can change both in the editor." />
+      <SectionHead overline="Presets" title="Start from a preset" body="A preset sets the starting look and behaviour. Everything stays editable in the editor." />
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {PRESETS.map((preset) => (
           <li key={preset.id}>
@@ -320,7 +381,7 @@ function Presets({ onPreset }) {
 function RecentClips({ clips, onOpen }) {
   return (
     <section className="flex flex-col gap-4">
-      <SectionHead overline="Recent clips" title="Pick up a clip already on the server" body="Clips are shared on this demo server. Opening one takes you to the tracking step." />
+      <SectionHead overline="Recent clips" title="Pick up a clip already on the server" body="Clips are shared on this demo server. Opening one starts tracking in the editor." />
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {clips.slice(0, 6).map((clip) => (
           <li key={clip.clip_id}>

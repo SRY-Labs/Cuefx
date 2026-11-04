@@ -3,18 +3,14 @@
 import { useEffect, useState } from "react";
 import Editor from "../components/Editor";
 import HomeScreen, { ServerMark } from "../components/HomeScreen";
-import NewShot from "../components/NewShot";
 import { IconBtn } from "../components/ui";
 import { health } from "../lib/api";
-import { presetById } from "../lib/presets";
 
 export default function Page() {
   const [view, setView] = useState("home");
-  const [clip, setClip] = useState(null);
-  const [shot, setShot] = useState(null);
+  const [source, setSource] = useState(null);
   const [preset, setPreset] = useState(null);
-  const [sample, setSample] = useState(false);
-  const [track, setTrack] = useState(null);
+  const [session, setSession] = useState(0);
   const [server, setServer] = useState(null);
   const [theme, setTheme] = useState("dark");
 
@@ -34,24 +30,22 @@ export default function Page() {
     try { window.localStorage.setItem("cuefx-theme", next); } catch { /* storage can be blocked */ }
   }
 
-  function startFlow({ nextClip = null, presetId = null, presetObj = null, useSample = false, trackChoice = null } = {}) {
-    setClip(nextClip);
-    setShot(null);
-    setPreset(presetObj || presetById(presetId));
-    setSample(useSample);
-    setTrack(trackChoice);
-    setView("new");
+  function open(nextSource, nextPreset) {
+    setSource(nextSource);
+    setPreset(nextPreset || null);
+    setSession((value) => value + 1);
+    setView("editor");
   }
 
   function home() {
     setView("home");
-    setSample(false);
+    setSource(null);
   }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       <div className={`flex h-12 flex-none items-center gap-3 border-b px-4 text-xs text-mute ${view === "home" ? "border-line bg-bg" : "border-line bg-panel"}`}>
-        <button type="button" onClick={home} className="flex items-center gap-2 rounded-[10px] px-1 py-1" aria-label="CueFX home">
+        <button type="button" onClick={view === "editor" ? undefined : home} disabled={view === "editor"} className="flex items-center gap-2 rounded-[10px] px-1 py-1 disabled:cursor-default" aria-label="CueFX home">
           <span className="grid h-6 w-7 place-items-center rounded-[6px] bg-accent text-on-accent">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M4 18c4-9 10-12 16-12M17 3l3 3-3 3" /><circle cx="6" cy="17" r="2" />
@@ -66,23 +60,11 @@ export default function Page() {
       <div className="min-h-0 flex-1 overflow-hidden">
         {view === "home" && (
           <HomeScreen
-            onStart={({ useSample, preset: presetObj, track: trackChoice }) => startFlow({ useSample, presetObj, trackChoice })}
-            onOpen={(next) => startFlow({ nextClip: next })}
+            onStart={({ source: nextSource, preset: nextPreset }) => open(nextSource, nextPreset)}
+            onOpen={(clip, nextPreset) => open({ kind: "clip", clip }, nextPreset)}
           />
         )}
-        {view === "new" && (
-          <NewShot
-            initialClip={clip}
-            preset={preset}
-            sample={sample}
-            track={track}
-            onBack={home}
-            onReady={(nextClip, created) => { setClip(nextClip); setShot(created); setView("editor"); }}
-          />
-        )}
-        {view === "editor" && shot && (
-          <Editor clip={clip} created={shot} preset={preset} onBack={home} />
-        )}
+        {view === "editor" && source && <Editor key={session} source={source} preset={preset} onBack={home} />}
       </div>
     </div>
   );

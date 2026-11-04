@@ -121,10 +121,11 @@ input[type="range"].cue-range:disabled { opacity: 0.4; }
 @keyframes soft-pulse { 50% { opacity: 0.45; } }
 .media-shimmer { background: linear-gradient(100deg, transparent 35%, rgb(var(--c-line2) / 0.22) 50%, transparent 65%) 0 0 / 200% 100% no-repeat, rgb(var(--c-well)); animation: sheen 1.6s ease-in-out infinite; }
 .media-spinner { width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgb(var(--c-accent) / 0.25); border-top-color: rgb(var(--c-accent)); animation: spin 900ms linear infinite; }
+.bar-tracking { background: linear-gradient(90deg, rgb(var(--c-track) / 0.3) 30%, rgb(var(--c-track)) 50%, rgb(var(--c-track) / 0.3) 70%) 0 0 / 200% 100%; animation: sheen 1.4s linear infinite; }
 .bar-processing { background: linear-gradient(90deg, rgb(var(--c-accent) / 0.45) 30%, rgb(var(--c-accent)) 50%, rgb(var(--c-accent) / 0.45) 70%) 0 0 / 200% 100%; animation: sheen 1.4s linear infinite; }
 @media (prefers-reduced-motion: reduce) {
   .media-shimmer { animation: none; }
-  .media-spinner, .bar-processing { animation: soft-pulse 2s ease-in-out infinite; }
+  .media-spinner, .bar-processing, .bar-tracking { animation: soft-pulse 2s ease-in-out infinite; }
 }
 
 /* VestraPath type roles used on the landing and flow screens. */

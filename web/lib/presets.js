@@ -38,7 +38,18 @@ export const PRESETS = [
 export const presetById = (id) => PRESETS.find((preset) => preset.id === id) || null;
 
 /** The clip on the landing page, served from web/public. */
-export const SAMPLE_CLIP = { url: "/showcase/1_input_web.mp4", name: "cuefx-sample-kick.mp4", part: "fist", side: "left" };
+export const SAMPLE_CLIP = { url: "/showcase/1_input_web.mp4", name: "cuefx-sample-kick.mp4", part: "foot", side: "left" };
+
+/**
+ * The route of the directed showcase take, read off 4_output_web.mp4, in plate pixels (1920x1080, 24 fps).
+ * It is only data: the sample opens with this path so the first render matches the example on the landing page.
+ */
+export const SAMPLE_ROUTE = {
+  appear_frame: 63,
+  release_frame: 80,
+  vanish: { start: 171, end: 191 },
+  points: [[91, 716, 465], [110, 459, 315], [130, 198, 302], [149, 41, 488], [158, 91, 644], [190, 264, 814]],
+};
 
 /** Behaviours and body points the hero's direct bar offers, in the editor's own words. */
 export const BAR_BEHAVIOURS = [
@@ -71,6 +82,11 @@ const BEHAVIOUR_LINE = {
   orbit: "It circles close around the body point for the whole shot, camera stays fixed.",
   hold: "It stays held on the body point for the whole shot, camera stays fixed.",
 };
+
+/** The prompt written from the look and the behaviour. "Auto" prompts follow this as either one changes. */
+export function autoPrompt(look, behaviour) {
+  return `${LOOK_LINE[look] || LOOK_LINE.blue_plasma} ${BEHAVIOUR_LINE[behaviour] || BEHAVIOUR_LINE.hold_throw}`;
+}
 
 /** A preset built from the bar's choices: the behaviour, the look, and a prompt that says both. */
 export function presetFrom({ behaviour, look, lookName }) {

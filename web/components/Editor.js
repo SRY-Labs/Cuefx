@@ -1,30 +1,33 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createCue, defaults as loadDefaults, normalize, preview, validate } from "../lib/api";
 import {
-  BEHAVIOURS, BEHAVIOUR_NOTE, EASINGS, ENDING_NOTE, ENDINGS, PARTS, SHAPES, addPathPoint, anchorAt,
-  clipLine, deletePathPoint, drawnRoute, holdsOnBody, lookById, movePathPoint, orbitValue, orbAt, partName,
-  partOf, cueForWire, phaseTimes, pointAt, setPointEasing, setPointFrame, setTiming, sideOf, spinOf, timecode,
-  toThrow, withDiameter, withEnding, withLook, withShape,
+  clipUploadIssue, createCue, defaults as loadDefaults, frameUrl, normalize, preview, proposeTiming, uploadClip, validate,
+} from "../lib/api";
+import {
+  addPathPoint, anchorAt, clipLine, cueForWire, deletePathPoint, drawnRoute, holdsOnBody, lookById, movePathPoint, orbAt,
+  partName, partOf, phaseTimes, pointAt, setPointFrame, setTiming, sideOf, toThrow, withDiameter, withLook,
 } from "../lib/cue";
-import { Group, LEFT_SECTORS, RIGHT_SECTORS, SectorNotes, SideColumn, badgesOf, sectorOf, useAutoOpen, useEscapeDrawer } from "./EditorPanels";
-import LookPicker, { LookStill } from "./LookPicker";
+import { SAMPLE_CLIP, SAMPLE_ROUTE, autoPrompt } from "../lib/presets";
+import { checkPrompt } from "../lib/prompt";
+import { LTX_PROMPT, STAGES, newTake, runTake, stagesOf, takeDownloads, takeMedia } from "../lib/takes";
+import Inspector from "./Inspector";
+import MediaLoading, { useMediaLoading } from "./MediaLoading";
 import Plate, { platePoint } from "./Plate";
-import StandinPanel from "./StandinPanel";
 import Timeline from "./Timeline";
-import FlowSteps from "./FlowSteps";
-import { Alert, Btn, Icon, IconBtn, Num, Row, Seg, Slider, cx } from "./ui";
+import { Btn, Icon, Tip, cx } from "./ui";
 
-const ORBIT_FIELDS = [
-  ["radius_sizes", "Radius", "sizes", 0.1, 10, 0.1],
-  ["speed_deg_per_s", "Speed", "°/s", -3600, 3600, 1],
-  ["tilt_deg", "Tilt", "°", 0, 90, 1],
-];
+const HISTORY_LIMIT = 100;
+const VIEW_ZOOMS = [["fit", "Fit"], [1.5, "150%"], [2, "200%"], [3, "300%"]];
 
 function seedOf(point) {
   if (!point) return null;
   return { frame: point.frame ?? point.f, x: point.x, y: point.y };
+}
+
+function clock(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
 function adoptTrack(current, tracked) {
@@ -34,29 +37,43 @@ function adoptTrack(current, tracked) {
     hand: part === "palm" ? tracked.hand : current.hand,
     hand_seed: tracked.hand_seed,
     track: tracked.track,
-    diameter_px: tracked.diameter_px,
     anchor_offset: tracked.anchor_offset,
     corrections: [],
-    route: (current.route || []).map((point) => ({ ...point, diameter_px: tracked.diameter_px })),
   };
   if (tracked.body_point) next.body_point = tracked.body_point;
   else delete next.body_point;
   return next;
 }
 
-// Settings the backend stores but does not render yet. They are not the user's problem, so the editor hides them.
+// Settings the backend stores but does not render yet. They are not the artist's problem, so the editor hides them.
 const hidden = (list) => (list || []).filter((warning) => warning.code !== "setting_not_used");
 
-/** The first cue the editor shows: the preset's behaviour and look, at a size people can see. */
-function prepare(cue, preset, clip) {
-  let next = { ...cue };
-  if (preset) {
-    next = withLook(next, preset.look, preset.prompt);
-    if (preset.behaviour !== (next.behaviour || "hold_throw")) {
-      if (holdsOnBody(preset.behaviour)) next = { ...next, behaviour: preset.behaviour, release_frame: null, route: [] };
-      else if (holdsOnBody(next.behaviour)) next = toThrow(next, preset.behaviour);
-      else next = { ...next, behaviour: preset.behaviour };
-    }
+function merge(primary, extra) {
+  const seen = new Set(primary.map((warning) => warning.code));
+  return [...primary, ...(extra || []).filter((warning) => !seen.has(warning.code))];
+}
+
+/** The first cue the editor shows: the preset's behaviour and look, the sample's path, at a size people can see. */
+function prepare(cue, preset, clip, sampleRoute) {
+  let next = withLook({ ...cue }, preset?.look || "blue_plasma");
+  const behaviour = preset?.behaviour || next.behaviour || "hold_throw";
+  if (behaviour !== (next.behaviour || "hold_throw")) {
+    if (holdsOnBody(behaviour)) next = { ...next, behaviour, release_frame: null, route: [] };
+    else if (holdsOnBody(next.behaviour)) next = toThrow(next, behaviour);
+    else next = { ...next, behaviour };
+  }
+  if (sampleRoute && !holdsOnBody(next.behaviour)) {
+    const d = next.diameter_px;
+    next = {
+      ...next,
+      appear_frame: SAMPLE_ROUTE.appear_frame,
+      release_frame: SAMPLE_ROUTE.release_frame,
+      vanish: { ...SAMPLE_ROUTE.vanish },
+      route: [
+        { f: SAMPLE_ROUTE.release_frame, x: null, y: null, diameter_px: d, easing_in: "linear" },
+        ...SAMPLE_ROUTE.points.map(([f, x, y]) => ({ f, x, y, diameter_px: d, easing_in: "linear" })),
+      ],
+    };
   }
   const [plateW, plateH] = clip.plate_size || [1920, 1080];
   const readable = Math.round(Math.min(plateW, plateH) * 0.12);
@@ -64,89 +81,225 @@ function prepare(cue, preset, clip) {
   return next;
 }
 
-export default function Editor({ clip, created, preset, onBack }) {
-  const start = useMemo(() => prepare(created.cue, preset, clip), [created]);
-  const [cue, setCue] = useState(start);
-  const [warnings, setWarnings] = useState(hidden(created.warnings));
-  const [effectRange, setEffectRange] = useState(created.cue.effect_range);
-  const [frames, setFrames] = useState(null);
-  const [frame, setFrame] = useState(Math.min(created.cue.appear_frame || 0, clip.frames - 1));
-  const [playing, setPlaying] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const [standin, setStandin] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerKey, setPickerKey] = useState(0);
-  const [variants, setVariants] = useState([]);
-  const [reference, setReference] = useState(null);
-  const pickerRef = useRef(false);
-  pickerRef.current = pickerOpen;
-  const standinRef = useRef(false);
-  standinRef.current = standin;
-  const [tool, setTool] = useState("select");
-  const [selected, setSelected] = useState(null);
-  const [notice, setNotice] = useState(null);
+function trackHelp(error, part) {
+  if (error?.code === "no_hand" || error?.code === "no_track" || error?.code === "track_lost" || error?.code === "no_body_point") {
+    return `CueFX could not find the ${part}. Check that one person is in frame and the ${part} is visible for most of the clip. Choose another body point, or pick the person on the video.`;
+  }
+  return error?.message || "Tracking stopped without a reason.";
+}
+
+function uploadHelp(error) {
+  if (error?.code === "clip_too_long") return error.message;
+  if (error?.status === 413) return "This file is larger than 500 MB.";
+  return error?.message || "The clip could not be prepared.";
+}
+
+/**
+ * One workspace for the whole shot: the clip uploads and tracks here, the effect is shaped here, and takes render
+ * here. Nothing moves the artist between screens; background work reports in place.
+ * `source` is { kind: "sample" } | { kind: "file", file } | { kind: "clip", clip }.
+ */
+export default function Editor({ source, preset, onBack }) {
+  const sample = source.kind === "sample";
+  const [clip, setClip] = useState(source.kind === "clip" ? source.clip : null);
+  const [upload, setUpload] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const [anchor, setAnchor] = useState(sample ? { part: SAMPLE_CLIP.part, side: SAMPLE_CLIP.side } : { part: "fist", side: "right" });
+  const [trackState, setTrackState] = useState(source.kind === "clip" ? "track" : "upload");
+  const [trackError, setTrackError] = useState(null);
+  const [trackStarted, setTrackStarted] = useState(null);
   const [switching, setSwitching] = useState(null);
-  const [switchError, setSwitchError] = useState(null);
-  const [clickPick, setClickPick] = useState(null);
+  const [cue, setCue] = useState(null);
+  const [warnings, setWarnings] = useState([]);
+  const [effectRange, setEffectRange] = useState(null);
+  const [orbFrames, setOrbFrames] = useState(null);
+  const [frame, setFrame] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [loop, setLoop] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [checkError, setCheckError] = useState(null);
+  const [tool, setTool] = useState("select");
+  const [picking, setPicking] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [guides, setGuides] = useState(true);
+  const [viewZoom, setViewZoom] = useState("fit");
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [zoomMenu, setZoomMenu] = useState(false);
+  const [renderMenu, setRenderMenu] = useState(false);
+  const [toast, setToast] = useState(null);
   const [serverDefaults, setServerDefaults] = useState(null);
-  const [leftSector, setLeftSector] = useState(null);
-  const [rightSector, setRightSector] = useState("effect");
   const [scale, setScale] = useState(0);
+  const [promptAuto, setPromptAuto] = useState(true);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [customLook, setCustomLook] = useState(null);
+  const [videoAuto, setVideoAuto] = useState(true);
+  const [customVideo, setCustomVideo] = useState("");
+  const [evening, setEvening] = useState(false);
+  const [takes, setTakes] = useState([]);
+  const [viewing, setViewing] = useState("edit");
+  const [pending, setPending] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [, setHistoryTick] = useState(0);
   const onScale = useCallback((value) => setScale(value), []);
-  const [palms, setPalms] = useState(() => {
-    const part = partOf(created.cue);
-    return part === "palm" ? { [created.cue.hand]: created.cue.hand_seed } : {};
-  });
+  const palms = useRef({});
   const flight = useRef(null);
-  const cueRef = useRef(cue);
+  const trackReq = useRef(0);
+  const cueRef = useRef(null);
   const svgRef = useRef(null);
-  const origin = useRef(start.route || []);
+  const origin = useRef([]);
+  const history = useRef({ past: [], future: [] });
+  const lastLive = useRef(0);
+  const takeControllers = useRef(new Map());
+  const fileInput = useRef(null);
+  const localUrl = useRef(null);
+  const toastTimer = useRef(0);
   cueRef.current = cue;
+  const ready = trackState === "ready" && !!cue;
+  const frames = clip?.frames || 1;
+  const fps = clip?.fps || 24;
 
   useEffect(() => { loadDefaults().then(setServerDefaults).catch(() => {}); }, []);
 
-  const messages = useMemo(() => [
-    ...warnings.map((warning) => ({ key: warning.id, sector: sectorOf(warning), severity: warning.severity })),
-    ...(switchError ? [{ key: `switch:${switchError.code}:${switchError.message}`, sector: "tracking", severity: "error" }] : []),
-  ], [warnings, switchError]);
-  const badges = badgesOf(messages);
-  const openSector = useCallback((side, id) => (side === "left" ? setLeftSector : setRightSector)(id), []);
-  const closeAll = useCallback(() => { setLeftSector(null); setRightSector(null); }, []);
-  useAutoOpen(messages, openSector);
-  useEscapeDrawer(!!(leftSector || rightSector), closeAll);
+  /* ------------------------------------------------------------ toast */
+  function say(text, action, ms = 6000) {
+    clearTimeout(toastTimer.current);
+    setToast({ text, action, id: Date.now() });
+    toastTimer.current = setTimeout(() => setToast(null), ms);
+  }
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
 
+  /* ------------------------------------------------------------ upload and tracking */
   useEffect(() => {
-    refresh(start);
-    return () => flight.current?.abort();
-  }, [created]);
-
-  useEffect(() => {
-    function onKey(event) {
-      if (pickerRef.current || standinRef.current || event.target.closest("input, textarea, select, button")) return;
-      if (event.key === "ArrowLeft") setFrame((value) => Math.max(0, value - (event.shiftKey ? 10 : 1)));
-      if (event.key === "ArrowRight") setFrame((value) => Math.min(clip.frames - 1, value + (event.shiftKey ? 10 : 1)));
-      if (event.key === " ") { event.preventDefault(); togglePlay(); }
-      if ((event.key === "Delete" || event.key === "Backspace") && selected > 0) {
-        event.preventDefault();
-        const next = deletePathPoint(cueRef.current, selected);
-        setSelected(null);
-        commit(next);
+    let stopped = false;
+    (async () => {
+      if (source.kind === "clip") { track(source.clip, anchor); return; }
+      let file = source.file;
+      if (sample) {
+        setUpload({ phase: "check", name: SAMPLE_CLIP.name });
+        try {
+          const blob = await fetch(SAMPLE_CLIP.url).then((res) => { if (!res.ok) throw new Error(String(res.status)); return res.blob(); });
+          file = new File([blob], SAMPLE_CLIP.name, { type: "video/mp4" });
+        } catch {
+          if (!stopped) { setUploadError({ code: "sample_unavailable", message: "The sample clip did not load. Check the connection and try again." }); setTrackState("failed"); }
+          return;
+        }
       }
+      if (!stopped && file) startUpload(file);
+    })();
+    return () => {
+      stopped = true;
+      flight.current?.abort();
+      for (const controller of takeControllers.current.values()) controller.abort();
+      if (localUrl.current) URL.revokeObjectURL(localUrl.current);
+    };
+  }, []);
+
+  async function startUpload(file) {
+    setUploadError(null);
+    setTrackError(null);
+    setTrackState("upload");
+    if (localUrl.current) URL.revokeObjectURL(localUrl.current);
+    localUrl.current = URL.createObjectURL(file);
+    setUpload({ phase: "check", name: file.name, url: localUrl.current });
+    const issue = await clipUploadIssue(file);
+    if (issue) {
+      setUploadError(issue);
+      setTrackState("failed");
+      return;
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [clip.frames, selected]);
-
-  const playhead = useRef({ frame, playing });
-  playhead.current = { frame, playing };
-
-  function togglePlay() {
-    const { frame: at, playing: on } = playhead.current;
-    if (!on && at >= clip.frames - 1) setFrame(0);
-    setPlaying(!on);
+    setUpload({ phase: "upload", pct: 0, name: file.name, url: localUrl.current, started: Date.now() });
+    try {
+      const next = await uploadClip(file, (progress) => {
+        setUpload((prev) => ({ ...prev, ...progress, started: progress.phase === "prepare" && prev?.phase !== "prepare" ? Date.now() : prev?.started }));
+      });
+      setClip(next);
+      setFrame(Math.min(Math.round(next.frames / 3), next.frames - 1));
+      track(next, anchor);
+    } catch (err) {
+      setUploadError(err);
+      setTrackState("failed");
+    }
   }
 
+  /** Tracks `part`/`side` (or the clicked `seed`) on `target`. Before the first cue this fills the editor; after it,
+   *  only the track changes and the path, look and timing are kept. */
+  async function track(target, { part, side }, seed = null) {
+    const id = ++trackReq.current;
+    const first = !cueRef.current;
+    setPicking(null);
+    setTrackError(null);
+    if (first) { setTrackState("track"); setTrackStarted(Date.now()); } else setSwitching(part);
+    const hand = side || cueRef.current?.hand || "right";
+    const body = { hand };
+    if (part !== "palm") body.body_point = { part, side: part === "head" ? null : side };
+    if (seed) body.hand_seed = seedOf(seed);
+    try {
+      const result = await createCue(target.clip_id, body);
+      if (id !== trackReq.current) return;
+      if (part === "palm") palms.current[hand] = result.cue.hand_seed;
+      if (first) {
+        const start = prepare(result.cue, preset, target, sample && part === SAMPLE_CLIP.part && side === SAMPLE_CLIP.side && !seed);
+        origin.current = (start.route || []).map((point) => ({ ...point }));
+        setCue(start);
+        cueRef.current = start;
+        setWarnings(hidden(result.warnings));
+        setFrame(Math.min(start.appear_frame || 0, target.frames - 1));
+        setTrackState("ready");
+        refresh(start);
+      } else {
+        record(cueRef.current);
+        commit(adoptTrack(cueRef.current, result.cue));
+        say(`Now tracking the ${partName(result.cue)}. Path, look, size and timing are kept.`);
+      }
+      setAnchor({ part, side });
+    } catch (err) {
+      if (id !== trackReq.current) return;
+      const message = trackHelp(err, part);
+      setTrackError(message);
+      if (first) setTrackState("failed");
+    } finally {
+      if (id === trackReq.current) setSwitching(null);
+    }
+  }
+
+  function requestPart(part) {
+    const current = cueRef.current;
+    const side = part === "head" ? null : (current ? (sideOf(current) || current.hand) : anchor.side) || "right";
+    if (current && part === partOf(current) && side === sideOf(current)) return;
+    setAnchor({ part, side });
+    if (!clip || trackState === "upload") return;
+    if (part === "palm" && current && !palms.current[side]) {
+      setPicking({ part, side });
+      say("Click the palm on the video so CueFX tracks the right hand.");
+      return;
+    }
+    track(clip, { part, side }, part === "palm" ? palms.current[side] : null);
+  }
+
+  function requestSide(side) {
+    const current = cueRef.current;
+    const part = current ? partOf(current) : anchor.part;
+    if (part === "head" || (current && side === sideOf(current))) return;
+    setAnchor({ part, side });
+    if (!clip || trackState === "upload") return;
+    if (part === "palm" && current && !palms.current[side]) {
+      setPicking({ part, side });
+      say("Click the palm on the video so CueFX tracks the right hand.");
+      return;
+    }
+    track(clip, { part, side }, part === "palm" ? palms.current[side] : null);
+  }
+
+  function togglePick() {
+    if (!clip) return;
+    if (picking) { setPicking(null); return; }
+    const part = cueRef.current ? partOf(cueRef.current) : anchor.part;
+    const side = cueRef.current ? (sideOf(cueRef.current) || cueRef.current.hand) : anchor.side;
+    setPlaying(false);
+    setPicking({ part, side });
+  }
+
+  /* ------------------------------------------------------------ cue, server checks, history */
   function remember(next) {
     cueRef.current = next;
     setCue(next);
@@ -158,7 +311,7 @@ export default function Editor({ clip, created, preset, onBack }) {
     flight.current = controller;
     const { signal } = controller;
     setBusy(true);
-    setError(null);
+    setCheckError(null);
     try {
       const norm = await normalize(cueForWire(next), signal);
       const checked = await validate(norm.cue, signal);
@@ -168,39 +321,64 @@ export default function Editor({ clip, created, preset, onBack }) {
       remember(norm.cue);
       setWarnings(hidden(merge(checked.warnings, norm.warnings)));
       setEffectRange(checked.effect_range);
-      setFrames(drawn ? drawn.frames : null);
+      setOrbFrames(drawn ? drawn.frames : null);
       return true;
     } catch (err) {
-      if (!err?.aborted) setError(err);
+      if (!err?.aborted) setCheckError(err);
       return false;
     } finally {
       if (!signal.aborted) setBusy(false);
     }
   }
 
-  function applyLook({ picked, prompt, reference: still, generate }) {
-    const main = picked[0];
-    const next = withLook(cueRef.current, main, prompt);
-    if (main === "reference" && still) next.reference_image = still.name;
-    else delete next.reference_image;
-    setVariants(picked);
-    setReference(still || null);
-    setPickerOpen(false);
-    refresh(next).then((ok) => {
-      if (ok && generate) setStandin(true);
-    });
-  }
-
   function commit(next) {
     remember(next);
     setPlaying(false);
-    setNotice(null);
     refresh(next);
+  }
+
+  function record(previous) {
+    if (!previous) return;
+    const { past } = history.current;
+    past.push(previous);
+    if (past.length > HISTORY_LIMIT) past.shift();
+    history.current.future = [];
+    setHistoryTick((value) => value + 1);
+  }
+
+  /** A change from a control. Sliders send many in a row; those count as one step of undo. */
+  function change(next, { live = false } = {}) {
+    const at = Date.now();
+    if (!live || at - lastLive.current > 700) record(cueRef.current);
+    if (live) lastLive.current = at;
+    commit(next);
+  }
+
+  function undo() {
+    const { past, future } = history.current;
+    if (!past.length || !cueRef.current) return;
+    future.push(cueRef.current);
+    const previous = past.pop();
+    setSelected(null);
+    setHistoryTick((value) => value + 1);
+    commit(previous);
+  }
+
+  function redo() {
+    const { past, future } = history.current;
+    if (!future.length || !cueRef.current) return;
+    past.push(cueRef.current);
+    const next = future.pop();
+    setSelected(null);
+    setHistoryTick((value) => value + 1);
+    commit(next);
   }
 
   function setBehaviour(behaviour) {
     const current = cueRef.current;
-    if (behaviour === current.behaviour) return;
+    if (!current || behaviour === current.behaviour) return;
+    record(current);
+    setSelected(null);
     if (holdsOnBody(behaviour)) {
       commit({ ...current, behaviour, release_frame: null, route: [] });
       setTool("select");
@@ -215,64 +393,73 @@ export default function Editor({ clip, created, preset, onBack }) {
     commit({ ...current, behaviour });
   }
 
-  async function follow(part, side, seed) {
-    setSwitching(part);
-    setSwitchError(null);
-    const body = { hand: part === "palm" ? (side || cueRef.current.hand) : cueRef.current.hand };
-    if (part === "palm") {
-      if (!seed) {
-        setClickPick({ part, side: side || cueRef.current.hand });
-        setSwitching(null);
-        return;
-      }
-      body.hand_seed = seedOf(seed);
-    } else {
-      body.body_point = { part, side: part === "head" ? null : side };
-    }
-    try {
-      const result = await createCue(clip.clip_id, body);
-      if (part === "palm") setPalms((map) => ({ ...map, [body.hand]: result.cue.hand_seed }));
-      setClickPick(null);
-      setWarnings(result.warnings || []);
-      commit(adoptTrack(cueRef.current, result.cue));
-    } catch (err) {
-      setSwitchError(err);
-    } finally {
-      setSwitching(null);
-    }
-  }
-
-  function requestPart(part) {
+  function addPoint(at) {
     const current = cueRef.current;
-    const side = part === "head" ? null : (sideOf(current) || current.hand);
-    if (part === partOf(current) && side === sideOf(current)) return;
-    const seed = part === "palm" ? palms[side] : null;
-    follow(part, side, seed);
-  }
-
-  function requestSide(side) {
-    const current = cueRef.current;
-    const part = partOf(current);
-    if (part === "head" || side === sideOf(current)) return;
-    follow(part, side, part === "palm" ? palms[side] : null);
-  }
-
-  function onPlate(point) {
-    if (clickPick) {
-      follow(clickPick.part, clickPick.side, { frame, x: Math.round(point.x), y: Math.round(point.y) });
-      return;
-    }
-    if (tool !== "draw") return;
-    const result = addPathPoint(cueRef.current, point.x, point.y);
-    if (result.refused) {
-      setNotice(result.refused);
-      return;
-    }
+    const last = current.route?.[current.route.length - 1]?.f;
+    if (last != null && last >= frames - 1) { say("The path already reaches the last frame of the clip. Move a point earlier, then add one."); return; }
+    const result = addPathPoint(current, at.x, at.y);
+    if (result.refused) { say(result.refused); return; }
+    record(cueRef.current);
     setSelected(result.index);
+    setFrame(result.cue.route[result.index].f);
     commit(result.cue);
   }
 
+  function deleteSelected() {
+    if (selected == null || selected < 1 || !cueRef.current?.route?.[selected]) return;
+    record(cueRef.current);
+    const next = deletePathPoint(cueRef.current, selected);
+    setSelected(null);
+    commit(next);
+  }
+
+  function resetPath() {
+    if (!cueRef.current) return;
+    record(cueRef.current);
+    setSelected(null);
+    commit({ ...cueRef.current, route: origin.current.map((point) => ({ ...point })) });
+  }
+
+  async function evenOut() {
+    if (!cueRef.current) return;
+    setEvening(true);
+    try {
+      const result = await proposeTiming(cueForWire(cueRef.current));
+      record(cueRef.current);
+      commit(result.cue);
+      say("Points re-timed to a constant speed.", { label: "Undo", run: undo });
+    } catch (err) {
+      say(err?.message || "The points could not be re-timed.");
+    } finally {
+      setEvening(false);
+    }
+  }
+
+  /* ------------------------------------------------------------ prompts */
+  const autoText = cue ? autoPrompt(cue.look, cue.behaviour) : "";
+  const prompt = promptAuto ? autoText : customPrompt;
+  const videoPrompt = videoAuto ? LTX_PROMPT : customVideo;
+  const promptStale = !promptAuto && cue && customLook && customLook !== cue.look ? lookById(customLook).name : null;
+  function onPrompt(text) {
+    if (promptAuto) setCustomLook(cue?.look || null);
+    setPromptAuto(false);
+    setCustomPrompt(text);
+  }
+  function onPromptAuto() { setPromptAuto(true); setCustomLook(null); }
+  function onVideoPrompt(text) { setVideoAuto(false); setCustomVideo(text); }
+
+  /* ------------------------------------------------------------ plate interaction */
+  function onPlate(point) {
+    if (picking) {
+      track(clip, picking, { frame, x: Math.round(point.x), y: Math.round(point.y) });
+      return;
+    }
+    if (tool !== "draw" || !ready || viewing !== "edit") return;
+    addPoint(point);
+  }
+
   function dragPoint(event, index) {
+    if (tool === "hand" || picking) return;
     if (index < 1) {
       setSelected(index);
       setFrame(cueRef.current.route[index].f);
@@ -281,6 +468,7 @@ export default function Editor({ clip, created, preset, onBack }) {
     event.preventDefault();
     event.stopPropagation();
     setSelected(index);
+    record(cueRef.current);
     const move = (ev) => {
       const at = platePoint(svgRef.current, ev);
       if (!at) return;
@@ -295,285 +483,544 @@ export default function Editor({ clip, created, preset, onBack }) {
     window.addEventListener("pointerup", up);
   }
 
-  const hold = holdsOnBody(cue.behaviour);
-  const here = pointAt(cue.track, frame);
-  const releaseAt = pointAt(cue.track, phaseTimes(cue).release);
-  const anchor = anchorAt(cue, hold ? here : releaseAt);
-  const route = drawnRoute(cue, anchor).filter((point) => point.x != null && point.y != null);
-  const orb = orbAt(frames, frame);
-  const tint = cue.grade?.tint || "#9fd4ff";
+  function startPan(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const from = { x: event.clientX - pan.x, y: event.clientY - pan.y };
+    const move = (ev) => setPan({ x: ev.clientX - from.x, y: ev.clientY - from.y });
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  function setZoomLevel(value) {
+    setViewZoom(value);
+    setZoomMenu(false);
+    if (value === "fit") setPan({ x: 0, y: 0 });
+  }
+
+  /* ------------------------------------------------------------ playback */
+  const playhead = useRef({ frame, playing });
+  playhead.current = { frame, playing };
+  function togglePlay() {
+    if (!clip) return;
+    const { frame: at, playing: on } = playhead.current;
+    if (!on) {
+      if (loop && effectRange && (at < effectRange.start || at >= effectRange.end - 1)) setFrame(effectRange.start);
+      else if (at >= frames - 1) setFrame(0);
+    }
+    setPlaying(!on);
+  }
+
+  // Loop: at the end of the effect, jump back to its first frame and keep playing.
+  useEffect(() => {
+    if (!loop || !playing || !effectRange) return undefined;
+    if (frame < effectRange.end - 1) return undefined;
+    setPlaying(false);
+    setFrame(effectRange.start);
+    const handle = requestAnimationFrame(() => setPlaying(true));
+    return () => cancelAnimationFrame(handle);
+  }, [frame, loop, playing, effectRange]);
+
+  /* ------------------------------------------------------------ takes */
+  const running = takes.some((take) => take.status === "running");
+  useEffect(() => {
+    if (!running && !(trackState === "track" || upload?.phase === "prepare")) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [running, trackState, upload?.phase]);
+
   const errors = warnings.filter((warning) => warning.severity === "error");
-  const part = partOf(cue);
-  const side = sideOf(cue);
-  const length = effectRange ? effectRange.end - effectRange.start : 0;
-  const cap = serverDefaults?.max_window_frames || 193;
+  const promptBlocked = checkPrompt(prompt).some((issue) => issue.severity === "error") || checkPrompt(videoPrompt).some((issue) => issue.severity === "error" && issue.message.startsWith("The prompt is empty"));
+  const renderBlock = !clip || trackState === "failed" ? "Load a clip and track it first."
+    : errors.length ? "Fix the settings marked in red first."
+      : null;
+
+  function updateTake(id, patch) {
+    setTakes((list) => list.map((take) => (take.id === id ? { ...take, ...patch } : take)));
+  }
+
+  function launch(take) {
+    takeControllers.current.get(take.id)?.abort();
+    const controller = new AbortController();
+    takeControllers.current.set(take.id, controller);
+    runTake(take, (patch) => {
+      updateTake(take.id, patch);
+      if (patch.status === "done") say(`Take ${take.n} is ready.`, { label: "Watch", run: () => setViewing(take.id) });
+      if (patch.status === "failed") say(`Take ${take.n} stopped at the ${STAGES.find((stage) => stage.id === patch.failedStage)?.name.toLowerCase() || "render"}.`, { label: "Show", run: () => setViewing(take.id) });
+    }, controller.signal);
+  }
+
+  function render(kind = "full") {
+    setRenderMenu(false);
+    if (renderBlock) return;
+    if (!ready || busy) { setPending(kind); return; }
+    if (kind === "full" && promptBlocked) {
+      say("The prompt needs fixing before the styled frame can render. Open Prompt in the panel.");
+      return;
+    }
+    setPlaying(false);
+    const take = newTake({
+      n: takes.length + 1, kind, clipId: clip.clip_id, cue: cueForWire(cueRef.current), prompt: prompt.trim(), videoPrompt: videoPrompt.trim(),
+      look: cueRef.current.look, behaviour: cueRef.current.behaviour,
+    });
+    setTakes((list) => [...list, take]);
+    launch(take);
+  }
+
+  // A render asked for while the clip was still uploading or tracking starts as soon as the cue is checked.
+  useEffect(() => {
+    if (pending && ready && !busy) {
+      const kind = pending;
+      setPending(null);
+      render(kind);
+    }
+  }, [pending, ready, busy]);
+
+  function retry(take) {
+    const next = { ...take, status: "running", error: null, failedStage: null };
+    updateTake(take.id, next);
+    launch(next);
+  }
+
+  function useSettings(take) {
+    const previous = cueRef.current;
+    record(previous);
+    commit({ ...take.settings.cue });
+    if (take.settings.prompt !== autoPrompt(take.settings.look, take.settings.behaviour)) {
+      setPromptAuto(false);
+      setCustomPrompt(take.settings.prompt);
+      setCustomLook(take.settings.look);
+    } else setPromptAuto(true);
+    if (take.settings.videoPrompt !== LTX_PROMPT) { setVideoAuto(false); setCustomVideo(take.settings.videoPrompt); } else setVideoAuto(true);
+    setViewing("edit");
+    say(`Settings from take ${take.n} are back in the editor.`, { label: "Undo", run: undo });
+  }
+
+  const lastTake = takes[takes.length - 1];
+  const changed = lastTake && cue ? JSON.stringify(cueForWire(cue)) !== JSON.stringify(lastTake.settings.cue) || prompt.trim() !== lastTake.settings.prompt || videoPrompt.trim() !== lastTake.settings.videoPrompt : true;
+  const renderLabel = pending ? "Queued" : takes.length === 0 ? "Render" : changed ? `Render take ${takes.length + 1}` : "Render again";
+
+  /* ------------------------------------------------------------ keyboard */
+  const keyState = useRef({});
+  keyState.current = { selected, ready, viewing, picking, tool, cue };
+  useEffect(() => {
+    function onKey(event) {
+      const target = event.target;
+      if (target.closest?.("input, textarea, select, [contenteditable=true]")) return;
+      if (target.closest?.("button, [role=slider]") && (event.key === " " || event.key === "Enter")) return;
+      const mod = event.metaKey || event.ctrlKey;
+      const state = keyState.current;
+      if (mod && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
+      if (mod && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
+      if (mod || event.altKey) return;
+      if (event.key === " ") { event.preventDefault(); togglePlay(); return; }
+      if (event.key === "ArrowLeft") { event.preventDefault(); setPlaying(false); setFrame((value) => Math.max(0, value - (event.shiftKey ? 10 : 1))); return; }
+      if (event.key === "ArrowRight") { event.preventDefault(); setPlaying(false); setFrame((value) => Math.min(frames - 1, value + (event.shiftKey ? 10 : 1))); return; }
+      if (event.key === "Escape") {
+        if (state.picking) setPicking(null);
+        else if (state.viewing !== "edit") setViewing("edit");
+        else if (state.selected != null) setSelected(null);
+        else setTool("select");
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "v") setTool("select");
+      if (key === "h") setTool("hand");
+      if (key === "p" && state.ready && state.cue && !holdsOnBody(state.cue.behaviour)) setTool("draw");
+      if (key === "b") togglePick();
+      if (key === "g") setGuides((value) => !value);
+      if (key === "l" && state.ready) setLoop((value) => !value);
+      if ((event.key === "Delete" || event.key === "Backspace") && state.selected > 0) { event.preventDefault(); deleteSelected(); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Closes the small menus when the pointer goes elsewhere.
+  useEffect(() => {
+    if (!zoomMenu && !renderMenu) return undefined;
+    const away = (event) => { if (!event.target.closest?.("[data-menu]")) { setZoomMenu(false); setRenderMenu(false); } };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [zoomMenu, renderMenu]);
+
+  function goHome() {
+    if (running) {
+      say("A take is still rendering. Leaving stops following it here.", { label: "Leave", run: onBack });
+      return;
+    }
+    onBack();
+  }
+
+  /* ------------------------------------------------------------ what the viewer draws */
+  const hold = cue ? holdsOnBody(cue.behaviour) : false;
+  const here = cue ? pointAt(cue.track, frame) : null;
+  const releaseAt = cue ? pointAt(cue.track, phaseTimes(cue).release) : null;
+  const anchorPoint = cue ? anchorAt(cue, hold ? here : releaseAt) : null;
+  const route = cue ? drawnRoute(cue, anchorPoint).filter((point) => point.x != null && point.y != null) : [];
+  const orb = orbAt(orbFrames, frame);
+  const flightPath = useMemo(() => {
+    if (!orbFrames || !cue || hold) return null;
+    const T = phaseTimes(cue);
+    const pts = orbFrames.filter((point) => point.frame >= T.release && point.frame <= T.ve && point.x != null);
+    return pts.length > 1 ? pts.map((point) => `${point.x},${point.y}`).join(" ") : null;
+  }, [orbFrames, cue, hold]);
+  const tint = cue?.grade?.tint || "#9fd4ff";
   const k = scale > 0 ? 1 / scale : 5;
-  const trail = (cue.track || []).filter((point) => point.frame <= frame && point.frame > frame - 18);
+  const trail = cue ? (cue.track || []).filter((point) => point.frame <= frame && point.frame > frame - 18) : [];
   const selectedPoint = selected != null ? route[selected] : null;
+  // Only unsure frames the effect is on matter; a shaky start before the effect appears does not.
+  const uncertain = cue ? (cue.track || []).filter((point) => point.uncertain && (!effectRange || (point.frame >= effectRange.start && point.frame < effectRange.end))).length : 0;
+  const viewTake = viewing !== "edit" ? takes.find((take) => take.id === viewing) : null;
+  const zoomValue = viewZoom === "fit" ? 1 : viewZoom;
+  const partLabel = cue ? partName(cue) : `${anchor.part === "head" || anchor.part === "palm" ? "" : `${anchor.side} `}${anchor.part}`;
 
-  const trackingSector = (
-    <>
-      <Row label="Tracking" hint="Chooses the body point the effect follows. Pose points do not need a click.">
-        <Seg label="Attached to" value={part} options={PARTS} columns={3} disabled={!!switching} onChange={requestPart} />
-        {part !== "head" && (
-          <div className="mt-1">
-            <Seg label="Side" value={side} options={[["right", "Right"], ["left", "Left"]]} disabled={!!switching} onChange={requestSide} />
-          </div>
-        )}
-        {switchError && <p className="mt-1 text-2xs text-err" role="alert">{switchError.message}</p>}
-        <button type="button" className="mt-1 text-left text-2xs text-mute underline underline-offset-2 hover:text-ink disabled:opacity-40" disabled={!!switching} onClick={() => setClickPick({ part, side: side || cue.hand })}>Wrong person or hand? Click it in the video</button>
-      </Row>
-      <SectorNotes id="tracking" warnings={warnings}>
-        {here && <li className="text-2xs text-mute tnum">{partName(cue)} {Math.round(here.x)}, {Math.round(here.y)} · {Math.round(here.confidence * 100)}%{here.uncertain ? " · uncertain" : ""}</li>}
-      </SectorNotes>
-    </>
-  );
-
-  const appearanceSector = (
-    <>
-      <Group>
-        <Row label="Tint" hint="Colour mixed into the stand-in.">
-          <input aria-label="Tint" type="color" className="h-7 w-full cursor-pointer rounded border border-line bg-field" value={tint} onChange={(event) => commit({ ...cue, grade: { ...cue.grade, tint: event.target.value } })} />
-        </Row>
-        <Row label="Glow">
-          <Slider label="Glow" value={cue.grade?.glow ?? 0.6} min={0} max={1} step={0.05} onChange={(value) => commit({ ...cue, grade: { ...cue.grade, glow: value } })} format={(value) => `${Math.round(value * 100)}%`} />
-        </Row>
-      </Group>
-      <Group>
-        <Row label="Look" hint="Chooses the effect's material and colour.">
-          <div className="flex items-center gap-2">
-            {cue.look === "reference" && reference?.url
-              ? <img src={reference.url} alt="" className="h-8 w-8 flex-none rounded border border-line2 object-cover" />
-              : <LookStill id={lookById(cue.look).id} className="h-8 w-8 flex-none rounded border border-line2" />}
-            <span className="min-w-0 flex-1 break-words text-xs font-medium">{lookById(cue.look).name}</span>
-            <Btn size="sm" onClick={() => { setPickerKey((value) => value + 1); setPickerOpen(true); }}>Change</Btn>
-          </div>
-        </Row>
-      </Group>
-      <Group>
-        <Row label="Shape" hint="Sets the outline the stand-in draws.">
-          <Seg label="Shape" value={cue.shape || "sphere"} options={SHAPES} columns={2} onChange={(value) => commit(withShape(cue, value))} />
-        </Row>
-      </Group>
-      <SectorNotes id="appearance" warnings={warnings} />
-    </>
-  );
-
-  const effectSector = (
-    <>
-      <Row label="Behaviour" hint={BEHAVIOUR_NOTE[cue.behaviour || "hold_throw"]}>
-        <Seg label="Behaviour" value={cue.behaviour || "hold_throw"} options={BEHAVIOURS} columns={2} onChange={setBehaviour} />
-      </Row>
-      {cue.behaviour === "orbit" && ORBIT_FIELDS.map(([key, label, unit, min, max, step]) => (
-        <Row key={key} label={label}>
-          <label className="flex items-center gap-2">
-            <Num value={orbitValue(cue, key, serverDefaults)} min={min} max={max} step={step} onChange={(value) => commit({ ...cue, orbit: { ...cue.orbit, [key]: value } })} />
-            <span className="flex-none whitespace-nowrap text-2xs text-faint">{unit}</span>
-          </label>
-        </Row>
-      ))}
-      <Row label="Spin" hint="Degrees per second. Default uses the shape's own spin.">
-        <div className="flex items-center gap-2">
-          <Num value={spinOf(cue, serverDefaults)} min={-1440} max={1440} onChange={(value) => commit({ ...cue, spin_deg_per_s: value })} />
-          <span className="flex-none whitespace-nowrap text-2xs text-faint">°/s</span>
-          <Btn size="sm" variant="ghost" disabled={cue.spin_deg_per_s == null} onClick={() => { const next = { ...cue }; delete next.spin_deg_per_s; commit(next); }}>Default</Btn>
-        </div>
-      </Row>
-      <Row label="Ending" hint={ENDING_NOTE[cue.ending || "fade"]}>
-        <Seg label="Ending" value={cue.ending || "fade"} options={ENDINGS} onChange={(value) => commit(withEnding(cue, value, serverDefaults))} />
-      </Row>
-      <Row label="Size" hint="Sets the outer size of the effect, including its path.">
-        <div className="flex items-center gap-2">
-          <Num value={cue.diameter_px} min={8} max={800} onChange={(value) => commit(withDiameter(cue, value))} />
-          <span className="flex-none whitespace-nowrap text-2xs text-faint">px</span>
-        </div>
-        <Slider label="Size" value={cue.diameter_px || 80} min={8} max={400} onChange={(value) => commit(withDiameter(cue, value))} />
-      </Row>
-      <Row label={`Offset from ${part === "palm" ? "palm" : part}`} hint="Moves the effect away from the tracked body point.">
-        <div className="grid grid-cols-2 gap-1.5">
-          <Num value={cue.anchor_offset?.[0] ?? 0} min={-600} max={600} onChange={(value) => commit({ ...cue, anchor_offset: [value, cue.anchor_offset?.[1] ?? 0] })} />
-          <Num value={cue.anchor_offset?.[1] ?? 0} min={-600} max={600} onChange={(value) => commit({ ...cue, anchor_offset: [cue.anchor_offset?.[0] ?? 0, value] })} />
-        </div>
-      </Row>
-      <SectorNotes id="effect" warnings={warnings} />
-    </>
-  );
-
-  const timingSector = (
-    <>
-      {effectRange && (
-        <div className="mb-2 mt-2">
-          <div className="flex items-baseline justify-between text-xs">
-            <span className="text-mute">Effect length</span>
-            <span className={`tnum ${length > cap ? "text-err" : "text-ink"}`}>{(length / clip.fps).toFixed(1)} s / {(cap / clip.fps).toFixed(1)} s</span>
-          </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded bg-field" role="progressbar" aria-valuenow={length} aria-valuemax={cap}>
-            <div className={`h-full ${length > cap ? "bg-err" : "bg-accent"}`} style={{ width: `${Math.min(100, (length / cap) * 100)}%` }} />
-          </div>
-        </div>
-      )}
-      <Row label="Entrance" hint="How long the effect takes to become fully visible.">
-        <div className="flex items-center gap-2">
-          <Num value={cue.entrance?.seconds ?? 0} min={0} max={3} step={0.05} onChange={(value) => commit({ ...cue, entrance: { seconds: value } })} />
-          <span className="flex-none whitespace-nowrap text-2xs text-faint">s</span>
-        </div>
-      </Row>
-      <Row label="Appear"><Num value={cue.appear_frame} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "appear", value))} /></Row>
-      {!hold && <Row label="Release" hint="When the effect leaves the body point."><Num value={cue.release_frame} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "release", value))} /></Row>}
-      <Row label="Vanish start"><Num value={cue.vanish?.start} min={0} max={clip.frames - 1} onChange={(value) => commit(setTiming(cue, "vanishStart", value))} /></Row>
-      <Row label="Vanish end"><Num value={cue.vanish?.end} min={0} max={clip.frames} onChange={(value) => commit(setTiming(cue, "vanishEnd", value))} /></Row>
-      <SectorNotes id="timing" warnings={warnings} />
-    </>
-  );
-
-  const pathSector = (
-    <div className="pt-2">
-      {hold ? (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-mute">{BEHAVIOUR_NOTE[cue.behaviour]}</p>
-          <Btn size="sm" icon="route" onClick={() => setBehaviour("hold_throw")}>Switch to Hold + throw</Btn>
-        </div>
-      ) : (
-        <>
-          <p className="text-xs text-mute">{Math.max(0, (cue.route?.length || 1) - 1)} path {(cue.route?.length || 1) === 2 ? "point" : "points"}. Click the picture to add one, then drag the diamond.</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Btn size="sm" icon="route" onClick={() => setTool("draw")}>Draw path</Btn>
-            <Btn size="sm" icon="plus" onClick={() => {
-              const at = anchor || { x: clip.plate_size[0] / 2, y: clip.plate_size[1] / 2 };
-              const result = addPathPoint(cue, at.x + 120, at.y);
-              if (result.refused) setNotice(result.refused);
-              else { setSelected(result.index); setTool("select"); commit(result.cue); }
-            }}>Add point</Btn>
-            <Btn size="sm" variant="ghost" disabled={!origin.current || sameRoute(origin.current, cue.route)} onClick={() => { setSelected(null); commit({ ...cue, route: origin.current.map((point) => ({ ...point })) }); }}>Reset path</Btn>
-          </div>
-        </>
-      )}
-      {selected != null && cue.route?.[selected] && (
-        <div className="mt-3 rounded border border-line bg-field p-2">
-          <div className="text-2xs font-semibold uppercase tracking-wider text-faint">Point {selected + 1}{selected === 0 ? " · release" : ""}</div>
-          <Row label="Frame">
-            <Num value={cue.route[selected].f} min={0} max={clip.frames - 1} disabled={selected === 0} onChange={(value) => { const next = setPointFrame(cue, selected, value); commit(next); setFrame(next.route[selected].f); }} />
-          </Row>
-          {selected > 0 && (
-            <>
-              <Row label="Position">
-                <div className="grid grid-cols-2 gap-1.5">
-                  <Num value={Math.round(cue.route[selected].x)} min={-2000} max={4000} onChange={(value) => commit(movePathPoint(cue, selected, value, cue.route[selected].y))} />
-                  <Num value={Math.round(cue.route[selected].y)} min={-2000} max={3000} onChange={(value) => commit(movePathPoint(cue, selected, cue.route[selected].x, value))} />
-                </div>
-              </Row>
-              <Row label="Easing">
-                <Seg label="Easing" value={cue.route[selected].easing_in || "linear"} options={EASINGS} columns={2} onChange={(value) => commit(setPointEasing(cue, selected, value))} />
-              </Row>
-              <Btn size="sm" variant="danger" className="mt-1" onClick={() => { const next = deletePathPoint(cue, selected); setSelected(null); commit(next); }}>Delete point</Btn>
-            </>
-          )}
-          {selected === 0 && <p className="text-2xs text-faint">The release starts on the body point. Drag a later diamond, or draw the flight.</p>}
-        </div>
-      )}
-      <SectorNotes id="path" warnings={warnings} />
-    </div>
-  );
+  let status = null;
+  if (trackState === "upload" && upload) {
+    status = upload.phase === "prepare" ? `Preparing the clip · ${clock(now - (upload.started || now))}`
+      : upload.phase === "upload" ? `Uploading${upload.pct != null ? ` · ${upload.pct}%` : "…"}` : sample ? "Loading the sample…" : "Checking the clip…";
+  } else if (trackState === "track") status = `Tracking the ${partLabel} · ${clock(now - (trackStarted || now))}`;
+  else if (switching) status = `Tracking the ${switching}…`;
+  else if (busy) status = "Updating…";
 
   return (
     <main className="relative flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="grid h-12 flex-none grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line bg-panel px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Btn variant="ghost" icon="home" onClick={onBack}>Home</Btn>
-          <h1 className="min-w-0 truncate text-base font-semibold">{clip.filename}</h1>
-          <span className="hidden truncate text-xs text-faint tnum lg:inline">{clipLine(clip)}</span>
-        </div>
-        <FlowSteps
-          current={standin ? "render" : "direct"}
-          onSelect={{ direct: () => setStandin(false), render: () => { if (standin) return; setPlaying(false); setStandin(true); } }}
-          disabled={{ render: !standin && (busy || !!switching || errors.length > 0) }}
-        />
-        <div className="flex min-w-0 items-center justify-end gap-3">
-          {busy && <span className="text-xs text-mute">Updating…</span>}
-          {!standin && (
-            <Btn variant="primary" icon="orb" disabled={busy || !!switching || errors.length > 0} onClick={() => { setPlaying(false); setStandin(true); }}>Render preview</Btn>
+      <header className="flex h-12 flex-none items-center gap-2 border-b border-line bg-panel px-2.5 sm:px-3">
+        <Tip title="All shots" side="bottom" align="start">
+          <button type="button" aria-label="Back to the landing page" onClick={goHome} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-mute hover:bg-raised hover:text-ink"><Icon name="home" size={16} /></button>
+        </Tip>
+        <h1 className="min-w-0 truncate text-sm font-semibold">{clip?.filename || upload?.name || (sample ? SAMPLE_CLIP.name : "New shot")}</h1>
+        {clip && <span className="hidden truncate text-xs text-faint tnum lg:inline">{clipLine(clip)}</span>}
+        {status && <span className="hidden items-center gap-1.5 truncate text-xs text-mute sm:inline-flex" role="status"><Icon name="loader" size={12} className="spin" />{status}</span>}
+        <span className="flex-1" />
+        <Tip title="Undo" kbd="Ctrl Z" side="bottom">
+          <button type="button" aria-label="Undo" disabled={!history.current.past.length} onClick={undo} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-mute hover:bg-raised hover:text-ink disabled:opacity-35"><Icon name="undo" size={15} /></button>
+        </Tip>
+        <Tip title="Redo" kbd="Ctrl Shift Z" side="bottom">
+          <button type="button" aria-label="Redo" disabled={!history.current.future.length} onClick={redo} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-mute hover:bg-raised hover:text-ink disabled:opacity-35"><Icon name="redo" size={15} /></button>
+        </Tip>
+        <span aria-hidden="true" className="mx-1 h-5 w-px bg-line2" />
+        <div className="relative flex" data-menu>
+          <Tip side="bottom" align="end" title={pending ? "Queued" : "Render"}
+            note={renderBlock || (pending ? "Starts as soon as tracking finishes. Click to cancel." : "Guide pass, styled frame, then video · about 3 to 4 minutes. You can keep editing.")}>
+            <button type="button" disabled={!!renderBlock} onClick={() => (pending ? setPending(null) : render("full"))}
+              className={cx("inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-l-[9px] px-3 text-sm font-medium disabled:opacity-45 sm:px-3.5", pending ? "bg-accent/20 text-accent" : "bg-accent text-on-accent hover:bg-accent-hi")}>
+              <Icon name={pending ? "clock" : "sparkle"} size={15} />{renderLabel}
+            </button>
+          </Tip>
+          <button type="button" aria-label="Render options" aria-haspopup="menu" aria-expanded={renderMenu} disabled={!!renderBlock} onClick={() => setRenderMenu((value) => !value)}
+            className="inline-flex h-8 w-7 items-center justify-center rounded-r-[9px] border-l border-black/20 bg-accent text-on-accent hover:bg-accent-hi disabled:opacity-45">
+            <Icon name="chevDown" size={14} />
+          </button>
+          {renderMenu && (
+            <div role="menu" className="absolute right-0 top-[calc(100%+6px)] z-50 flex w-[260px] flex-col rounded-[12px] border border-line2 bg-panel p-1 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]">
+              <button type="button" role="menuitem" onClick={() => render("full")} className="flex flex-col rounded-[8px] px-2.5 py-2 text-left hover:bg-raised">
+                <span className="flex items-center gap-2 text-sm font-medium text-ink"><Icon name="sparkle" size={14} />Render take</span>
+                <span className="pl-[22px] text-xs text-faint">Guide pass, styled frame, video</span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => render("guide")} className="flex flex-col rounded-[8px] px-2.5 py-2 text-left hover:bg-raised">
+                <span className="flex items-center gap-2 text-sm font-medium text-ink"><Icon name="film" size={14} />Guide pass only</span>
+                <span className="pl-[22px] text-xs text-faint">The effect drawn on your footage, under a minute</span>
+              </button>
+            </div>
           )}
-          {switching && <span className="inline-flex items-center gap-1.5 text-xs text-mute"><Icon name="loader" size={13} className="spin" /> Tracking the {switching}</span>}
         </div>
       </header>
-      <div className={standin ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
-      <div className="relative flex min-h-0 flex-1">
-        <SideColumn side="left" sectors={LEFT_SECTORS} active={leftSector} onToggle={setLeftSector} badges={badges} content={{ tracking: trackingSector, appearance: appearanceSector }} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative flex min-h-0 flex-1 flex-col p-3">
-            {error && <Alert error={error}>The cue could not be checked</Alert>}
-            <Plate clip={clip} frame={frame} setFrame={setFrame} playing={playing} onEnded={() => setPlaying(false)} onClick={onPlate} svgRef={svgRef} onScale={onScale} cursor={tool === "draw" || clickPick ? "crosshair" : "default"}>
-              {trail.length > 1 && (
-                <polyline points={trail.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="rgb(var(--c-track))" strokeWidth="2" strokeDasharray="2 5" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.85" />
-              )}
-              {here && (
-                <g pointerEvents="none">
-                  <circle cx={here.x} cy={here.y} r={10 * k} fill={here.uncertain ? "none" : "rgb(var(--c-track) / 0.25)"} stroke="rgb(var(--c-track))" strokeWidth="2.5" strokeDasharray={here.uncertain ? "4 3" : undefined} vectorEffect="non-scaling-stroke" />
-                  <circle cx={here.x} cy={here.y} r={3 * k} fill="rgb(var(--c-track))" />
-                  <path d={`M${here.x - 16 * k} ${here.y}h${6 * k}M${here.x + 10 * k} ${here.y}h${6 * k}M${here.x} ${here.y - 16 * k}v${6 * k}M${here.x} ${here.y + 10 * k}v${6 * k}`} stroke="rgb(var(--c-track))" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-                  <text x={here.x + 18 * k} y={here.y + 22 * k} fill="rgb(var(--c-track))" fontSize={11 * k} fontWeight="600" className="halo-text">{here.uncertain ? `${partName(cue)} · uncertain` : partName(cue)}</text>
-                </g>
-              )}
-              {route.length > 1 && (
-                <polyline points={route.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="rgb(var(--c-path))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-              )}
-              {selectedPoint && (
-                <circle cx={selectedPoint.x} cy={selectedPoint.y} r={(selectedPoint.diameter_px || cue.diameter_px) / 2} fill="none" stroke="rgb(var(--c-accent))" strokeWidth="1.5" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" pointerEvents="none" />
-              )}
-              {route.map((point, index) => (
-                <g key={`${point.f}-${index}`} data-handle="1" className="cursor-move" onPointerDown={(event) => dragPoint(event, index)}>
-                  <circle cx={point.x} cy={point.y} r={16 * k} fill="transparent" />
-                  <polygon points={diamond(point.x, point.y, (index === 0 ? 5.5 : 7.5) * k)} fill="rgb(var(--c-path))" stroke={selected === index ? "rgb(var(--c-accent))" : "#000"} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-                  <text x={point.x + 14 * k} y={point.y + (index === 0 ? 22 : -12) * k} fill="rgb(var(--c-path))" fontSize={11 * k} fontWeight="600" className="halo-text">{index === 0 && selected === 0 ? `Release ${point.f}` : point.f}</text>
-                </g>
-              ))}
-              {orb?.visible && (
-                <PreviewShape x={orb.x} y={orb.y} diameter={orb.diameter} tint={tint} shape={cue.shape || "sphere"} opacity={orb.visibility ?? 1} />
-              )}
-            </Plate>
-            <div className="absolute left-5 top-5 flex gap-1">
-              <IconBtn icon="cursor" label="Select" active={tool === "select" && !clickPick} onClick={() => { setTool("select"); setClickPick(null); }} />
-              <IconBtn icon="route" label="Draw path" active={tool === "draw"} disabled={hold} onClick={() => { setTool("draw"); setClickPick(null); }} />
-            </div>
-            {tool === "draw" && !hold && <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded bg-black/75 px-3 py-1.5 text-sm text-white">Click the picture to add a path point</p>}
-            {clickPick && <p className="pointer-events-none absolute left-1/2 top-5 -translate-x-1/2 rounded bg-black/75 px-3 py-1.5 text-sm text-white">Click the {clickPick.part} in the picture</p>}
-            {notice && <p className="absolute bottom-16 left-1/2 w-[420px] max-w-[90%] -translate-x-1/2 rounded border border-warn/40 bg-panel px-3 py-2 text-sm text-warn" role="status">{notice}</p>}
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto min-[901px]:flex-row min-[901px]:overflow-hidden">
+        <div className="flex min-w-0 flex-none flex-col gap-2 p-2.5 min-[901px]:min-h-0 min-[901px]:flex-1">
+          {checkError && <div role="alert" className="rounded-[10px] border border-err/40 bg-err/10 px-3 py-2 text-sm"><span className="font-semibold">The settings could not be checked.</span> <span className="text-mute">{checkError.message}</span> <button type="button" className="font-medium text-accent hover:underline" onClick={() => cue && refresh(cue)}>Try again</button></div>}
+          <div className="relative flex min-h-[240px] flex-1 flex-col overflow-hidden rounded-[12px] bg-well max-[900px]:aspect-video max-[900px]:flex-none">
+            {viewTake ? (
+              <TakeView take={viewTake} now={now} onBack={() => setViewing("edit")} onRetry={() => retry(viewTake)} onUse={() => useSettings(viewTake)} />
+            ) : !clip ? (
+              <LocalPreview upload={upload} sample={sample} error={uploadError} onChoose={() => fileInput.current?.click()} onBack={goHome} now={now} />
+            ) : (
+              <>
+                <div className="absolute inset-0 overflow-hidden">
+                  <div className="absolute inset-0 flex flex-col" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoomValue})`, transformOrigin: "center" }}>
+                    <Plate clip={clip} frame={frame} setFrame={setFrame} playing={playing} onEnded={() => setPlaying(false)} onClick={onPlate} svgRef={svgRef} onScale={onScale}
+                      cursor={picking || (tool === "draw" && ready) ? "crosshair" : "default"}>
+                      {guides && trail.length > 1 && (
+                        <polyline points={trail.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="rgb(var(--c-track))" strokeWidth="2" strokeDasharray="2 5" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity="0.85" />
+                      )}
+                      {guides && here && (
+                        <g pointerEvents="none">
+                          <circle cx={here.x} cy={here.y} r={10 * k} fill={here.uncertain ? "none" : "rgb(var(--c-track) / 0.25)"} stroke={here.uncertain ? "rgb(var(--c-warn))" : "rgb(var(--c-track))"} strokeWidth="2.5" strokeDasharray={here.uncertain ? "4 3" : undefined} vectorEffect="non-scaling-stroke" />
+                          <circle cx={here.x} cy={here.y} r={3 * k} fill={here.uncertain ? "rgb(var(--c-warn))" : "rgb(var(--c-track))"} />
+                          <text x={here.x + 16 * k} y={here.y + 20 * k} fill={here.uncertain ? "rgb(var(--c-warn))" : "rgb(var(--c-track))"} fontSize={11 * k} fontWeight="600" className="halo-text">{here.uncertain ? `${partName(cue)} · unsure` : partName(cue)}</text>
+                        </g>
+                      )}
+                      {guides && !hold && (flightPath ? (
+                        <polyline points={flightPath} fill="none" stroke="rgb(var(--c-path))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                      ) : route.length > 1 && (
+                        <polyline points={route.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="rgb(var(--c-path))" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                      ))}
+                      {guides && selectedPoint && (
+                        <circle cx={selectedPoint.x} cy={selectedPoint.y} r={(selectedPoint.diameter_px || cue.diameter_px) / 2} fill="none" stroke="rgb(var(--c-ink))" strokeWidth="1.5" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" pointerEvents="none" />
+                      )}
+                      {guides && !hold && route.map((point, index) => (
+                        <g key={`${index}-${point.f}`} data-handle="1" className={index === 0 ? "cursor-pointer" : "cursor-move"} onPointerDown={(event) => dragPoint(event, index)}>
+                          <circle cx={point.x} cy={point.y} r={16 * k} fill="transparent" />
+                          <polygon points={diamond(point.x, point.y, (index === 0 ? 6 : 7.5) * k)} fill={index === 0 ? "rgb(var(--c-ph-held))" : "rgb(var(--c-path))"} stroke={selected === index ? "rgb(var(--c-ink))" : "#000"} strokeWidth={selected === index ? 2.5 : 1.5} vectorEffect="non-scaling-stroke" />
+                          {(selected === index || index === 0) && (
+                            <text x={point.x + 14 * k} y={point.y + (index === 0 ? 22 : -12) * k} fill={index === 0 ? "rgb(var(--c-ph-held))" : "rgb(var(--c-path))"} fontSize={11 * k} fontWeight="600" className="halo-text">{index === 0 ? `Release · f ${point.f}` : `f ${point.f}`}</text>
+                          )}
+                        </g>
+                      ))}
+                      {guides && orb?.visible && (
+                        <PreviewShape x={orb.x} y={orb.y} diameter={orb.diameter} tint={tint} shape={cue?.shape || "sphere"} opacity={orb.visibility ?? 1} />
+                      )}
+                    </Plate>
+                  </div>
+                  {tool === "hand" && !picking && <div className="absolute inset-0 cursor-grab active:cursor-grabbing" onPointerDown={startPan} aria-hidden="true" />}
+                </div>
+                <div role="toolbar" aria-label="Viewer tools" className="absolute left-3 top-3 z-10 flex flex-col gap-0.5 rounded-[11px] border border-line bg-bg/85 p-[3px] backdrop-blur">
+                  <ToolBtn icon="cursor" label="Select and move" kbd="V" active={tool === "select" && !picking} onClick={() => { setTool("select"); setPicking(null); }} />
+                  <ToolBtn icon="pen" label="Draw path" note={hold ? "Hold and Orbit stay on the body point, so they have no path." : "Each click adds a point after the last one."} kbd="P" active={tool === "draw" && !picking} disabled={!ready || hold} onClick={() => { setTool("draw"); setPicking(null); }} />
+                  <ToolBtn icon="target" label="Pick on the video" note="Click the person, or the exact point, to track." kbd="B" active={!!picking} disabled={!clip || !!switching} onClick={togglePick} />
+                  <ToolBtn icon="hand" label="Pan" note="Drag to move the zoomed picture." kbd="H" active={tool === "hand" && !picking} onClick={() => { setTool("hand"); setPicking(null); }} />
+                </div>
+                <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+                  <Tip title={guides ? "Hide guides" : "Show guides"} note="The tracked point, the path and the preview effect." kbd="G" side="bottom" align="end">
+                    <button type="button" aria-pressed={guides} onClick={() => setGuides((value) => !value)} className={cx("inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-line bg-bg/85 px-2.5 text-xs font-medium backdrop-blur", guides ? "text-ink" : "text-mute")}>
+                      <Icon name={guides ? "eye" : "eyeOff"} size={14} />Guides
+                    </button>
+                  </Tip>
+                </div>
+                <div className="absolute bottom-3 right-3 z-10" data-menu>
+                  <button type="button" aria-haspopup="menu" aria-expanded={zoomMenu} aria-label="Viewer zoom" onClick={() => setZoomMenu((value) => !value)} className="inline-flex h-7 items-center gap-1 rounded-[8px] border border-line bg-bg/85 px-2 text-xs font-medium text-mute backdrop-blur hover:text-ink">
+                    {VIEW_ZOOMS.find(([value]) => value === viewZoom)?.[1]}<Icon name="chevDown" size={12} />
+                  </button>
+                  {zoomMenu && (
+                    <div role="menu" className="absolute bottom-[calc(100%+6px)] right-0 flex w-28 flex-col rounded-[10px] border border-line2 bg-panel p-1 shadow-lg">
+                      {VIEW_ZOOMS.map(([value, label]) => (
+                        <button key={label} type="button" role="menuitemradio" aria-checked={viewZoom === value} onClick={() => setZoomLevel(value)} className={cx("rounded-[6px] px-2 py-1.5 text-left text-xs hover:bg-raised", viewZoom === value ? "text-ink" : "text-mute")}>{label}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {trackState === "track" && <Pill>Tracking the {partLabel}… the clip plays meanwhile</Pill>}
+                {picking && <Pill>Click the {picking.part === "head" ? "head" : `${picking.side} ${picking.part}`} on the video · Esc to cancel</Pill>}
+                {!picking && tool === "draw" && ready && !hold && <Pill>Click to add a point after the last one · V to move points</Pill>}
+                {trackState === "failed" && trackError && !picking && (
+                  <div className="absolute left-1/2 top-1/2 z-10 flex w-[min(440px,90%)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-[14px] border border-line2 bg-panel/95 p-4 text-sm shadow-lg" role="alert">
+                    <span className="font-semibold text-ink">Tracking did not find it</span>
+                    <span className="text-mute">{trackError}</span>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <Btn size="sm" variant="primary" icon="target" onClick={togglePick}>Pick on the video</Btn>
+                      <Btn size="sm" onClick={() => track(clip, anchor)}>Try again</Btn>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
           </div>
+          <Timeline
+            clip={clip} frames={frames} fps={fps} cue={ready ? cue : null} frame={frame}
+            setFrame={(value) => { setPlaying(false); setFrame(value); }}
+            effectRange={ready ? effectRange : null} selected={selected}
+            onSelect={(index) => { setSelected(index); setFrame(cueRef.current.route[index].f); }}
+            onBegin={() => record(cueRef.current)}
+            onTiming={(key, value) => remember(setTiming(cueRef.current, key, value))}
+            onPointFrame={(index, value) => { const next = setPointFrame(cueRef.current, index, value); remember(next); return next.route[index].f; }}
+            onCommit={() => refresh(cueRef.current)}
+            playing={playing} onPlay={togglePlay} loop={loop} setLoop={setLoop}
+            state={trackState === "failed" && !clip ? "upload" : trackState}
+            takeRange={viewTake ? viewTake.settings.cue.effect_range : null}
+          />
+          <TakesStrip takes={takes} viewing={viewing} onView={setViewing} onRetry={retry} clip={clip} now={now} editThumb={clip ? frameUrl(clip.clip_id, Math.min(frame, frames - 1)) : null} />
         </div>
-        <SideColumn side="right" sectors={RIGHT_SECTORS} active={rightSector} onToggle={setRightSector} badges={badges} content={{ effect: effectSector, timing: timingSector, path: pathSector }} />
+        <Inspector
+          cue={cue} ready={ready} anchor={anchor} switching={switching} trackError={ready ? trackError : null} uncertain={uncertain}
+          picking={!!picking} onPart={requestPart} onSide={requestSide} onPick={togglePick}
+          onShowUncertain={() => { const first = (cue?.track || []).find((point) => point.uncertain && (!effectRange || (point.frame >= effectRange.start && point.frame < effectRange.end))); if (first) { setPlaying(false); setFrame(first.frame); } }}
+          warnings={warnings} selected={selected} setSelected={setSelected} setFrame={setFrame} frames={frames} defaults={serverDefaults}
+          change={change} onBehaviour={setBehaviour} onLook={(id) => change(withLook(cueRef.current, id))}
+          onReset={resetPath} canReset={!!cue && !sameRoute(origin.current, cue.route)} onEvenOut={evenOut} evening={evening}
+          onAddPoint={() => { const at = anchorPoint || { x: clip.plate_size[0] / 2, y: clip.plate_size[1] / 2 }; const last = route[route.length - 1] || at; addPoint({ x: last.x + 120, y: last.y }); }}
+          onDeletePoint={deleteSelected}
+          prompt={prompt} promptAuto={promptAuto} onPrompt={onPrompt} onPromptAuto={onPromptAuto} promptStale={promptStale} onPromptUpdate={onPromptAuto}
+          videoPrompt={videoPrompt} videoAuto={videoAuto} onVideoPrompt={onVideoPrompt} onVideoAuto={() => setVideoAuto(true)}
+          onNewSeed={() => change({ ...cueRef.current, seed: 1 + Math.floor(Math.random() * 2147483646) })}
+        />
       </div>
-      <div className="flex h-10 flex-none items-center gap-2 border-t border-line px-3">
-        <button type="button" className="flex h-8 w-8 items-center justify-center rounded border border-line2 bg-raised" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay}>
-          <Icon name={playing ? "pause" : "play"} size={14} />
-        </button>
-        <span className="text-xs text-mute tnum">{frame} · {timecode(frame, clip.fps)}</span>
-        <span className="flex-1" />
-        <span className="text-2xs text-faint">{tool === "draw" ? "Draw" : "Select"} · Space plays · arrows step</span>
-      </div>
-      <Timeline
-        clip={clip}
-        cue={cue}
-        frame={frame}
-        setFrame={setFrame}
-        effectRange={effectRange}
-        selected={selected}
-        onSelect={(index) => { setSelected(index); setFrame(cueRef.current.route[index].f); }}
-        onTiming={(key, value) => remember(setTiming(cueRef.current, key, value))}
-        onPointFrame={(index, value) => { const next = setPointFrame(cueRef.current, index, value); remember(next); return next.route[index].f; }}
-        onCommit={() => refresh(cueRef.current)}
-      />
-      </div>
-      {standin && <StandinPanel clip={clip} cue={cue} onClose={() => setStandin(false)} />}
-      {pickerOpen && (
-        <LookPicker key={pickerKey} cue={cue} variants={variants} reference={reference} onClose={() => setPickerOpen(false)} onApply={applyLook} />
-      )}
+      <input ref={fileInput} type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm" className="hidden"
+        onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) startUpload(file); }} />
     </main>
   );
 }
 
-function merge(primary, extra) {
-  const seen = new Set(primary.map((warning) => warning.code));
-  return [...primary, ...(extra || []).filter((warning) => !seen.has(warning.code))];
+/* ------------------------------------------------------------------ pieces */
+
+function ToolBtn({ icon, label, note, kbd, active, disabled, onClick }) {
+  return (
+    <Tip title={label} note={note} kbd={kbd} side="bottom" align="start">
+      <button type="button" aria-label={label} aria-pressed={active} disabled={disabled} onClick={onClick}
+        className={cx("inline-flex h-8 w-8 items-center justify-center rounded-[8px] disabled:opacity-35", active ? "bg-raised text-ink" : "text-mute hover:text-ink")}>
+        <Icon name={icon} size={15} />
+      </button>
+    </Tip>
+  );
+}
+
+function Pill({ children }) {
+  return <p className="pointer-events-none absolute bottom-3 left-1/2 z-10 max-w-[80%] -translate-x-1/2 rounded-full bg-black/75 px-3.5 py-1.5 text-center text-xs font-medium text-white">{children}</p>;
+}
+
+function Toast({ toast, onClose }) {
+  return (
+    <div role="status" key={toast.id} className="absolute top-14 left-1/2 z-30 flex max-w-[90%] -translate-x-1/2 items-center gap-3 rounded-[10px] border border-line2 bg-raised py-1.5 pl-3.5 pr-1.5 text-sm text-ink shadow-[0_14px_34px_-10px_rgb(0_0_0/0.7)]">
+      <span>{toast.text}</span>
+      {toast.action && <button type="button" className="rounded-[7px] px-2.5 py-1 text-sm font-semibold text-accent hover:bg-panel" onClick={() => { onClose(); toast.action.run(); }}>{toast.action.label}</button>}
+      <button type="button" aria-label="Dismiss" className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-mute hover:bg-panel hover:text-ink" onClick={onClose}><Icon name="x" size={13} /></button>
+    </div>
+  );
+}
+
+/** Before the server has the clip: the file plays from the browser while it uploads and prepares. */
+function LocalPreview({ upload, sample, error, onChoose, onBack, now }) {
+  const src = upload?.url || (sample ? SAMPLE_CLIP.url : null);
+  return (
+    <div className="absolute inset-0">
+      {src && <video src={src} muted loop playsInline autoPlay className="absolute inset-0 h-full w-full object-contain opacity-80" />}
+      {error ? (
+        <div className="absolute left-1/2 top-1/2 flex w-[min(440px,90%)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-[14px] border border-line2 bg-panel/95 p-4 text-sm shadow-lg" role="alert">
+          <span className="font-semibold text-ink">{error.code === "clip_too_long" ? "This clip is too long" : "The clip could not be used"}</span>
+          <span className="text-mute">{uploadHelp(error)}</span>
+          <div className="mt-1 flex flex-wrap gap-2">
+            <Btn size="sm" variant="primary" icon="upload" onClick={onChoose}>Choose another clip</Btn>
+            <Btn size="sm" variant="ghost" onClick={onBack}>Back</Btn>
+          </div>
+        </div>
+      ) : upload && (
+        <div className="absolute bottom-4 left-1/2 flex w-[min(360px,86%)] -translate-x-1/2 flex-col gap-1.5 rounded-[12px] bg-black/75 px-4 py-3 text-white" role="status">
+          <span className="text-sm font-medium">
+            {upload.phase === "prepare" ? `Preparing the clip · ${clock(now - (upload.started || now))}` : upload.phase === "upload" ? `Uploading${upload.pct != null ? ` · ${upload.pct}%` : "…"}` : sample ? "Loading the sample…" : "Checking the clip…"}
+          </span>
+          <span className="h-1 overflow-hidden rounded-full bg-white/15">
+            {upload.phase === "upload" && upload.pct != null ? <span className="block h-full bg-accent" style={{ width: `${upload.pct}%` }} /> : <span className="bar-processing block h-full w-full" />}
+          </span>
+          <span className="text-xs text-white/70">{upload.phase === "prepare" ? "CueFX makes a 24 fps copy to track, usually 10 to 20 s. Tracking starts next." : "The clip plays here meanwhile."}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function stageLine(take, now) {
+  const stages = stagesOf(take);
+  if (take.status === "failed") return `${STAGES.find((stage) => stage.id === take.failedStage)?.name || "Render"} failed`;
+  if (take.status === "done") return `${take.kind === "guide" ? "Guide pass" : lookById(take.settings.look).name} · ${clock((take.finished || now) - take.started)}`;
+  const at = stages.findIndex((stage) => stage.id === take.stage);
+  return `${stages[Math.max(0, at)]?.name || "Starting"} · ${clock(now - take.stageStarted)}`;
+}
+
+function TakesStrip({ takes, viewing, onView, onRetry, editThumb, now, clip }) {
+  return (
+    <div className="flex flex-none items-center gap-2 overflow-x-auto pb-0.5" role="group" aria-label="Edit and takes">
+      <button type="button" aria-pressed={viewing === "edit"} onClick={() => onView("edit")}
+        className={cx("flex h-12 flex-none items-center gap-2.5 rounded-[10px] border py-0 pl-1.5 pr-3.5 text-left text-[13px] font-medium", viewing === "edit" ? "border-ink/60 bg-raised" : "border-line hover:bg-raised")}>
+        <span className="block h-9 w-16 flex-none overflow-hidden rounded-[6px] bg-well">{editThumb && <img src={editThumb} alt="" className="h-full w-full object-cover" />}</span>
+        <span className="flex flex-col leading-4">Edit<span className="text-xs font-normal text-faint">Live preview</span></span>
+      </button>
+      <span aria-hidden="true" className="h-8 w-px flex-none bg-line2" />
+      {takes.length === 0 && <span className="flex h-12 flex-none items-center rounded-[10px] border border-dashed border-line2 px-3.5 text-xs text-faint">Rendered takes appear here</span>}
+      {takes.map((take) => {
+        const media = takeMedia(take);
+        const on = viewing === take.id;
+        const stages = stagesOf(take);
+        const at = Math.max(0, stages.findIndex((stage) => stage.id === take.stage));
+        const pct = take.status === "done" ? 100 : Math.min(100, ((at + Math.min(0.95, (now - take.stageStarted) / 1000 / (stages[at]?.typical || 60))) / stages.length) * 100);
+        return (
+          <div key={take.id} className="flex flex-none items-center gap-1">
+            <button type="button" aria-pressed={on} onClick={() => onView(take.id)}
+              className={cx("flex h-12 items-center gap-2.5 rounded-[10px] border py-0 pl-1.5 pr-3.5 text-left text-[13px] font-medium",
+                on ? "border-accent bg-raised" : take.status === "failed" ? "border-err/40 hover:bg-raised" : "border-line hover:bg-raised")}>
+              <span className="relative block h-9 w-16 flex-none overflow-hidden rounded-[6px] bg-well">
+                {media?.kind === "image" && <img src={media.url} alt="" className="h-full w-full object-cover" />}
+                {media?.kind === "video" && <video src={media.url} muted playsInline preload="metadata" className="h-full w-full object-cover" />}
+                {!media && clip && take.settings.cue.effect_range && <img src={frameUrl(clip.clip_id, take.settings.cue.effect_range.start)} alt="" className="h-full w-full object-cover opacity-50" />}
+                {take.status === "running" && <span className="absolute bottom-0 left-0 h-[3px] bg-accent transition-[width] duration-1000" style={{ width: `${pct}%` }} />}
+              </span>
+              <span className="flex flex-col leading-4">
+                {take.kind === "guide" ? `Take ${take.n} · guide` : `Take ${take.n}`}
+                <span className={cx("text-xs font-normal tnum", take.status === "failed" ? "text-err" : take.status === "running" ? "text-accent" : "text-faint")}>{stageLine(take, now)}</span>
+              </span>
+            </button>
+            {take.status === "failed" && (
+              <Tip title="Retry" note="Runs again from the stage that failed." side="top">
+                <button type="button" aria-label={`Retry take ${take.n}`} onClick={() => onRetry(take)} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] border border-line2 text-mute hover:text-ink"><Icon name="retry" size={14} /></button>
+              </Tip>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TakeView({ take, now, onBack, onRetry, onUse }) {
+  const media = takeMedia(take);
+  const loading = useMediaLoading(media?.url || null);
+  const downloads = takeDownloads(take);
+  const stages = stagesOf(take);
+  const range = take.settings.cue.effect_range;
+  return (
+    <div className="absolute inset-0">
+      {media?.kind === "video" && <video key={`${media.url}-${loading.attempt}`} src={media.url} controls autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-contain" {...loading.handlers} />}
+      {media?.kind === "image" && <img key={`${media.url}-${loading.attempt}`} src={media.url} alt={`Styled frame of take ${take.n}`} className="absolute inset-0 h-full w-full object-contain" {...loading.handlers} />}
+      {media && <MediaLoading status={loading} />}
+      <div className="absolute left-3 right-3 top-3 z-10 flex flex-wrap items-center gap-1.5">
+        <button type="button" onClick={onBack} className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-bg/85 px-2.5 text-xs font-medium text-ink backdrop-blur hover:bg-raised"><Icon name="chevRight" size={13} className="rotate-180" />Edit</button>
+        <span className="inline-flex h-8 items-center gap-1.5 rounded-[9px] bg-bg/85 px-2.5 text-xs text-mute backdrop-blur tnum">
+          Take {take.n} · {lookById(take.settings.look).name} · seed {take.settings.cue.seed ?? 42}{range ? ` · frames ${range.start}–${range.end - 1}` : ""}
+          {media?.guide && take.status !== "running" ? " · guide pass" : ""}
+        </span>
+        <span className="flex-1" />
+        <Btn size="sm" className="!h-8 bg-bg/85 backdrop-blur" onClick={onUse}>Use these settings</Btn>
+        {downloads.length > 0 && (
+          <details className="relative">
+            <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-[9px] border border-line2 bg-bg/85 px-2.5 text-xs font-medium text-ink backdrop-blur hover:bg-raised"><Icon name="download" size={14} />Download</summary>
+            <div className="absolute right-0 top-[calc(100%+6px)] z-20 flex w-52 flex-col rounded-[10px] border border-line2 bg-panel p-1 shadow-lg">
+              {downloads.map((item) => (
+                <a key={item.id} href={item.href} download={item.download || true} className="rounded-[6px] px-2.5 py-1.5 text-xs text-ink hover:bg-raised">{item.label}</a>
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+      {take.status !== "done" && (
+        <div className="absolute bottom-4 left-1/2 z-10 flex w-[min(380px,90%)] -translate-x-1/2 flex-col gap-2 rounded-[12px] border border-line2 bg-panel/95 p-3.5 shadow-lg" role="status">
+          {stages.map((stage, index) => {
+            const at = stages.findIndex((item) => item.id === (take.status === "failed" ? take.failedStage : take.stage));
+            const state = take.status === "failed" && index === at ? "failed" : index < at || take.stage === "done" ? "done" : index === at ? "run" : "next";
+            return (
+              <div key={stage.id} className="flex items-center gap-2.5 text-xs">
+                <span className={cx("grid h-5 w-5 flex-none place-items-center rounded-full", state === "done" && "bg-accent/20 text-accent", state === "run" && "border-2 border-accent", state === "failed" && "bg-err/20 text-err", state === "next" && "border border-line2")}>
+                  {state === "done" && <Icon name="check" size={11} />}{state === "failed" && <Icon name="x" size={11} />}
+                </span>
+                <span className={cx("flex-1", state === "next" ? "text-mute" : "font-medium text-ink")}>{stage.name}</span>
+                <span className="text-faint tnum">{state === "run" ? `${clock(now - take.stageStarted)} · usually ~${stage.typical} s` : state === "next" ? `~${stage.typical} s` : ""}</span>
+              </div>
+            );
+          })}
+          {take.status === "failed" && (
+            <div className="mt-1 flex flex-col gap-2 border-t border-line pt-2">
+              <span className="text-xs text-mute">{take.error?.message || "This stage stopped."}</span>
+              <Btn size="sm" variant="primary" icon="retry" className="self-start" onClick={onRetry}>Retry from here</Btn>
+            </div>
+          )}
+          {take.status === "running" && <span className="text-[11.5px] text-faint">You can keep editing. Changes go into the next take.</span>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PreviewShape({ x, y, diameter, tint, shape, opacity }) {
