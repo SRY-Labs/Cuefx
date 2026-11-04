@@ -164,7 +164,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
       className="mt-8 flex w-full max-w-[760px] flex-col gap-1 rounded-[16px] border border-line2 bg-panel p-1.5 text-left sm:flex-row sm:items-center">
       <div className="relative w-full sm:w-auto sm:min-w-0">
         <button type="button" aria-haspopup="listbox" aria-expanded={open === "clip"} onClick={() => setOpen(open === "clip" ? null : "clip")}
-          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised active:bg-sel")}>
+          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised active:bg-sel", open === "clip" && "bg-raised")}>
           {setup.clip === "file" ? <Icon name="film" size={18} className="flex-none text-mute" /> : <img src="/showcase/input.jpg" alt="" className="h-7 w-11 flex-none rounded-[6px] object-cover" />}
           <span className="flex min-w-0 flex-col">
             <span className="text-[11px] font-medium text-faint">Clip</span>
@@ -205,7 +205,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
       <span aria-hidden="true" className="hidden h-7 w-px flex-none bg-line sm:block" />
       <div className="relative w-full sm:w-auto">
         <button type="button" aria-haspopup="listbox" aria-expanded={open === "preset"} onClick={() => setOpen(open === "preset" ? null : "preset")}
-          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised active:bg-sel")}>
+          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised active:bg-sel", open === "preset" && "bg-raised")}>
           <span className="block h-7 w-7 flex-none overflow-hidden rounded-full bg-black"><LookStill id={preset.look} className="h-full w-full" /></span>
           <span className="flex min-w-0 flex-col">
             <span className="text-[11px] font-medium text-faint">Preset</span>
