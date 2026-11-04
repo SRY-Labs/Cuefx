@@ -534,12 +534,14 @@ export default function Editor({ source, preset, onBack }) {
     }, controller.signal);
   }
 
-  function render(kind = "full") {
+  // Pressing Render opens the take's own view, where its stages fill in. A render that was queued while tracking
+  // starts later without taking the screen over: it says so, with Watch.
+  function render(kind = "full", { open = true } = {}) {
     setRenderMenu(false);
     if (renderBlock) return;
     if (!ready || busy) { setPending(kind); return; }
     if (kind === "full" && promptBlocked) {
-      say("The prompt needs fixing before the styled frame can render. Open Prompt in the panel.");
+      say("The prompt needs fixing before the styled frame can render. It is in the Prompt tab.");
       return;
     }
     setPlaying(false);
@@ -549,6 +551,8 @@ export default function Editor({ source, preset, onBack }) {
     });
     setTakes((list) => [...list, take]);
     launch(take);
+    if (open) setPlayer(take.id);
+    else say(`Take ${take.n} started rendering.`, { label: "Watch", run: () => setPlayer(take.id) });
   }
 
   // A render asked for while the clip was still uploading or tracking starts as soon as the cue is checked.
@@ -556,7 +560,7 @@ export default function Editor({ source, preset, onBack }) {
     if (pending && ready && !busy) {
       const kind = pending;
       setPending(null);
-      render(kind);
+      render(kind, { open: false });
     }
   }, [pending, ready, busy]);
 

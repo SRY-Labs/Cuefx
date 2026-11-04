@@ -7,6 +7,8 @@ import { Icon, Tip, cx } from "./ui";
 // Every lane is the same height, and its bar or marks sit in the same 20 px band in the middle of it.
 const LANE = { ruler: 24, track: 32, phases: 32, points: 32 };
 const BAND = "top-[6px] bottom-[6px]";
+// The tracked lane only needs to say where tracking holds, so its bar is a thin line, not a filled block.
+const LINE = "top-[13px] bottom-[13px]";
 const PHASE = {
   entrance: { token: "--c-ph-entrance", label: "Entrance", background: "rgb(var(--c-ph-entrance) / 0.22)" },
   held: { token: "--c-ph-held", label: "Held", background: "rgb(var(--c-ph-held) / 0.32)" },
@@ -211,14 +213,14 @@ export default function Timeline({
               )}
             </div>
             <div className="relative border-b border-line bg-lane" style={{ height: LANE.track }}>
-              {state === "upload" && <span className={cx("absolute left-0 right-0 rounded-[4px] bg-raised", BAND)} />}
-              {state === "track" && <span className={cx("bar-tracking absolute left-0 right-0 rounded-[4px] opacity-70", BAND)} />}
-              {state === "failed" && <span className={cx("absolute left-0 right-0 rounded-[4px] bg-err/25", BAND)} />}
+              {state === "upload" && <span className={cx("absolute left-0 right-0 rounded-full bg-raised", LINE)} />}
+              {state === "track" && <span className={cx("bar-tracking absolute left-0 right-0 rounded-full opacity-70", LINE)} />}
+              {state === "failed" && <span className={cx("absolute left-0 right-0 rounded-full bg-err/25", LINE)} />}
               {state === "ready" && runs.map((run) => (
-                <span key={run.start} className={cx("absolute rounded-[4px]", BAND)} title={`Tracked · frames ${run.start}–${run.end - 1}`} style={{
+                <span key={run.start} className={cx("absolute rounded-full", LINE)} title={`Tracked · frames ${run.start}–${run.end - 1}`} style={{
                   left: run.start * ppf,
                   width: Math.max(ppf, (run.end - run.start) * ppf),
-                  background: "rgb(var(--c-track) / 0.55)",
+                  background: "rgb(var(--c-track) / 0.8)",
                 }} />
               ))}
             </div>

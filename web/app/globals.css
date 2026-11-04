@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root, [data-theme="dark"] {
-  /* Framer-like dark greys for every surface; the green stays for actions (VestraPath). */
+  /* Enhanced UI: dark greys for every surface; the green stays for actions (VestraPath). */
   color-scheme: dark;
   --font-display: var(--font-ui);
   --c-bg: 14 14 14;        /* app background, viewer stage */
@@ -159,7 +159,7 @@ input[type="range"].compare-range { -webkit-appearance: none; appearance: none; 
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
-/* Framer-style textareas and inputs: a flat grey field, a quiet ring on focus. */
+/* Enhanced UI textareas and inputs: a flat grey field, a quiet ring on focus. */
 .fx-field { background: rgb(var(--c-field)); border: 1px solid transparent; border-radius: 8px; color: rgb(var(--c-ink)); }
 .fx-field:hover:not(:disabled) { border-color: rgb(var(--c-line2)); }
 .fx-field:focus { border-color: rgb(var(--c-accent) / 0.8); outline: none; }

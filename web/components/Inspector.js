@@ -67,7 +67,7 @@ function ErrorLine({ children, as: Tag = "li" }) {
 }
 
 /*
- * The panel follows one grid, like Framer's properties panel: every section has the same header and padding, every
+ * Enhanced UI: the panel follows one grid. Every section has the same header and padding, every
  * row has a 72 px label column and a control column that fills the rest, and every control is 30 px tall. A label
  * next to a control that spans several rows sits at the top, the height of the first row.
  */
@@ -83,7 +83,7 @@ function Section({ id, title, summary, open, onToggle, disabled, warn, children 
         {warn && <Icon name="alert" size={13} className="text-err" />}
         <span className="flex-1" />
         {!shown && summary && <span className="min-w-0 truncate text-xs font-normal text-faint">{summary}</span>}
-        <Icon name={shown ? "minus" : "plus"} size={14} className="flex-none text-mute group-hover:text-ink" />
+        <Icon name="chevDown" size={14} className={cx("flex-none text-mute transition-transform duration-200 ease-out motion-reduce:transition-none group-hover:text-ink", shown && "rotate-180")} />
       </button>
       {shown && <div className="flex flex-col gap-2 px-4 pb-4">{children}</div>}
     </section>

@@ -14,13 +14,13 @@ The old flow had four screens: Upload, Track, Direct, Render. Each one asked for
 
 1. **Landing.** The user chooses a Clip (the sample, or their own file) and a Preset (Plasma charge-up, Fireball throw, Orbiting spark, Ice in hand), then presses Try this shot. A file is checked for length and size as soon as it is chosen, or dropped anywhere on the page. A preset only sets the starting look and behaviour.
 2. **The editor opens straight away.** An uploaded clip plays from the browser while it uploads and prepares. Then the server's frames take over and tracking runs. The tracking lane fills, and the header shows a timer.
-3. **The user shapes the effect.** The Effect tab has Anchor, Motion and Look; the Prompt tab has the styled frame, the video and the seed. Every section opens and closes, and a closed one shows its value.
-4. **Render.** Pressed while the clip is still uploading or tracking, it queues and starts when the cue is checked. A take runs the guide pass, the styled frame, then the video. The user can keep editing meanwhile.
+3. **The user shapes the effect.** The Effect tab has Anchor, Motion and Look; the Prompt tab has the styled frame, the video and the seed. Every section opens and closes with an arrow, and a closed one shows its value.
+4. **Render.** Pressing Render opens the take's view, where its stages fill in. Pressed while the clip is still uploading or tracking, it queues, starts when the cue is checked, and offers Watch. A take runs the guide pass, the styled frame, then the video. The user can keep editing meanwhile.
 5. **Takes.** The Takes button opens a full-screen player: the takes listed on the left, the result large, a transport with frame steps, loop, speed and side-by-side compare. It has "Use these settings" and downloads for the video, the styled frame and the guide pass. A failed stage keeps the stages before it and offers Retry from that stage.
 
 ## The look
 
-The workspace follows Framer's dark properties panel. The full token list is in `web/app/globals.css`.
+The workspace uses the Enhanced UI: dark grey surfaces, grey selection and green actions. The full token list is in `web/app/globals.css`.
 
 - **Surfaces are dark greys.** The app background is `#0E0E0E`, bars and panels are `#141414`, and fields and secondary buttons are `#222222`. Lines are `#222222` and `#2E2E2E`.
 - **A selected item is a lighter grey (`#383838`), never the accent.** This covers segmented controls, tiles, tabs, tools and the takes list.

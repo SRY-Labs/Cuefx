@@ -1,7 +1,7 @@
 import localFont from "next/font/local";
 import "./globals.css";
 
-// Inter, as in tools like Framer and Figma: one family for the UI and the headings. Self-hosted so
+// Inter: one family for the UI and the headings. Self-hosted so
 // `next build` never fetches from Google Fonts.
 const inter = localFont({ src: "./fonts/inter-latin.woff2", weight: "100 900", variable: "--font-ui", display: "swap" });
 
