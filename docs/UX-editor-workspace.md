@@ -7,7 +7,8 @@ For the SRY Labs team. This is the `ux/editor-workspace` branch. It replaces the
 The old flow had four screens: Upload, Track, Direct, Render. Each one asked for its own setup, moved the user on when it was done, and hid what came before. VFX artists work differently. In After Effects, CapCut or Nuke there is one viewer, one timeline and a properties panel. Every setting stays editable, previews are instant, and a render is a deliberate press that produces a version. The workspace follows that model:
 
 - **One screen.** The viewer is on the left, with the timeline right under it. The effect's settings run the full height on the right, in two tabs: Effect and Prompt. Takes open in their own player.
-- **Nothing moves the user.** Upload, tracking and renders report in place: the top bar, the tracking lane and the Takes button. When a take finishes, a message offers Watch. The viewer and the settings tabs never switch by themselves.
+- **Nothing moves the user.** Upload, tracking and renders report in place: the tracking lane, the Takes button and one snackbar. When a take finishes, a message offers Watch. The viewer and the settings tabs never switch by themselves.
+- **One place for messages.** The snackbar at the top centre, under the bar, carries every message: work in progress (upload, tracking, re-tracking) with its progress, modes (picking a point, with Esc), problems with their fixes (a clip that is too long, tracking that found nobody), and short results with an action (Undo, Watch). Only one shows at a time and nothing is written over the video.
 - **Every setting lives in one place, and stays editable.** Changing the body point re-tracks in place and keeps the path, look, size and timing.
 
 ## The flow

@@ -631,6 +631,11 @@ export default function Editor({ source, preset, onBack }) {
     return () => document.removeEventListener("pointerdown", away);
   }, [renderMenu]);
 
+  // Entering the draw tool says once how it works, in the snackbar.
+  useEffect(() => {
+    if (tool === "draw" && ready && cue && !holdsOnBody(cue.behaviour)) say("Click the video to add points after the last one. V moves points, including the release.", null, 4000);
+  }, [tool]);
+
   function goHome() {
     if (running) {
       say("A take is still rendering. Leaving stops following it here.", { label: "Leave", run: onBack });
@@ -660,13 +665,30 @@ export default function Editor({ source, preset, onBack }) {
   const playerTake = player ? takes.find((take) => take.id === player) : null;
   const partLabel = cue ? partName(cue) : `${anchor.part === "head" || anchor.part === "palm" ? "" : `${anchor.side} `}${anchor.part}`;
 
-  let status = null;
-  if (trackState === "upload" && upload) {
-    status = upload.phase === "prepare" ? `Preparing the clip · ${clock(now - (upload.started || now))}`
-      : upload.phase === "upload" ? `Uploading${upload.pct != null ? ` · ${upload.pct}%` : "…"}` : sample ? "Loading the sample…" : "Checking the clip…";
-  } else if (trackState === "track") status = `Tracking the ${partLabel} · ${clock(now - (trackStarted || now))}`;
-  else if (switching) status = `Tracking the ${switching}…`;
-  else if (busy) status = "Updating…";
+  // Every message lives in one place, the snackbar at the top centre: ongoing work and modes as a standing notice,
+  // one-off results as a toast that replaces it for a few seconds. Nothing is written over the video.
+  let notice = null;
+  if (uploadError && !clip) {
+    notice = {
+      tone: "error", text: uploadError.code === "clip_too_long" ? "This clip is too long" : "The clip could not be used", detail: uploadHelp(uploadError),
+      actions: [{ label: "Choose another clip", run: () => fileInput.current?.click() }, { label: "Back", run: goHome }],
+    };
+  } else if (trackState === "failed" && trackError && !picking) {
+    notice = { tone: "error", text: "Tracking did not find it", detail: trackError, actions: [{ label: "Pick on the video", run: togglePick }, { label: "Try again", run: () => track(clip, anchor) }] };
+  } else if (picking) {
+    notice = { text: `Click the ${picking.part === "head" ? "head" : `${picking.side} ${picking.part}`} on the video`, kbd: "Esc", actions: [{ label: "Cancel", run: () => setPicking(null) }] };
+  } else if (trackState === "upload" && upload) {
+    notice = {
+      busy: true,
+      text: upload.phase === "prepare" ? `Preparing the clip · ${clock(now - (upload.started || now))}` : upload.phase === "upload" ? `Uploading${upload.pct != null ? ` · ${upload.pct}%` : "…"}` : sample ? "Loading the sample…" : "Checking the clip…",
+      detail: upload.phase === "prepare" ? "A 24 fps copy to track, usually 10 to 20 s. Tracking starts next." : "The clip plays meanwhile.",
+      pct: upload.phase === "upload" ? upload.pct : null,
+    };
+  } else if (trackState === "track") {
+    notice = { busy: true, text: `Tracking the ${partLabel} · ${clock(now - (trackStarted || now))}`, detail: "The clip plays meanwhile." };
+  } else if (switching) {
+    notice = { busy: true, text: `Tracking the ${switching}…`, detail: "About 20 s. Your path, look and timing stay." };
+  }
 
   return (
     <main className="relative flex h-full min-h-0 flex-col overflow-hidden">
@@ -687,9 +709,8 @@ export default function Editor({ source, preset, onBack }) {
         </div>
         <div className="hidden min-w-0 max-w-[44vw] items-center justify-center gap-2 md:flex">
           <span className="min-w-0 truncate text-[13px] font-medium text-ink">{clip?.filename || upload?.name || (sample ? SAMPLE_CLIP.name : "New shot")}</span>
-          {status ? (
-            <span className="inline-flex h-5 flex-none items-center gap-1.5 rounded-[5px] bg-raised px-1.5 text-[11px] text-mute tnum" role="status"><Icon name="loader" size={11} className="spin" />{status}</span>
-          ) : clip && <span className="hidden h-5 flex-none items-center rounded-[5px] bg-raised px-1.5 text-[11px] text-faint tnum lg:inline-flex">{clipLine(clip)}</span>}
+          {clip && <span className="hidden h-5 flex-none items-center rounded-[5px] bg-raised px-1.5 text-[11px] text-faint tnum lg:inline-flex">{clipLine(clip)}</span>}
+          {busy && !notice && <span className="flex-none text-faint" title="Checking the settings"><Icon name="loader" size={12} className="spin" /><span className="sr-only">Checking the settings</span></span>}
         </div>
         <div className="flex items-center justify-end gap-1.5">
         <TakesButton takes={takes} now={now} onOpen={() => takes.length && setPlayer(takes[takes.length - 1].id)} />
@@ -739,7 +760,7 @@ export default function Editor({ source, preset, onBack }) {
           </div>
           <div className="relative flex min-h-[240px] flex-1 flex-col overflow-hidden rounded-b-[10px] border border-t-0 border-line bg-well max-[900px]:aspect-video max-[900px]:flex-none">
             {!clip ? (
-              <LocalPreview upload={upload} sample={sample} error={uploadError} onChoose={() => fileInput.current?.click()} onBack={goHome} now={now} />
+              <LocalPreview upload={upload} sample={sample} />
             ) : (
               <>
                 <div className="absolute inset-0 overflow-hidden">
@@ -791,19 +812,6 @@ export default function Editor({ source, preset, onBack }) {
                     </button>
                   </Tip>
                 </div>
-                {trackState === "track" && <Pill>Tracking the {partLabel}… the clip plays meanwhile</Pill>}
-                {picking && <Pill>Click the {picking.part === "head" ? "head" : `${picking.side} ${picking.part}`} on the video · Esc to cancel</Pill>}
-                {!picking && tool === "draw" && ready && !hold && <Pill>Click to add a point after the last one · V to move points, including the release</Pill>}
-                {trackState === "failed" && trackError && !picking && (
-                  <div className="absolute left-1/2 top-1/2 z-10 flex w-[min(420px,90%)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-[12px] border border-line2 bg-panel/95 p-4 text-[13px] shadow-[0_16px_40px_-12px_rgb(0_0_0/0.7)] backdrop-blur" role="alert">
-                    <span className="font-semibold text-ink">Tracking did not find it</span>
-                    <span className="text-mute">{trackError}</span>
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      <Btn size="sm" variant="primary" icon="target" onClick={togglePick}>Pick on the video</Btn>
-                      <Btn size="sm" onClick={() => track(clip, anchor)}>Try again</Btn>
-                    </div>
-                  </div>
-                )}
               </>
             )}
           </div>
@@ -836,7 +844,7 @@ export default function Editor({ source, preset, onBack }) {
           onNewSeed={() => change({ ...cueRef.current, seed: 1 + Math.floor(Math.random() * 2147483646) })}
         />
       </div>
-      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+      <Snackbar toast={toast} notice={notice} onClose={() => setToast(null)} />
       {playerTake && <TakesPlayer takes={takes} current={playerTake} clip={clip} now={now} onPick={setPlayer} onClose={() => setPlayer(null)} onRetry={retry} onUse={useSettings} />}
       <input ref={fileInput} type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.mkv,.webm" className="hidden"
         onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) startUpload(file); }} />
@@ -857,46 +865,50 @@ function ToolBtn({ icon, label, note, kbd, active, disabled, onClick }) {
   );
 }
 
-function Pill({ children }) {
-  return <p className="pointer-events-none absolute left-1/2 top-3 z-10 max-w-[80%] -translate-x-1/2 rounded-[8px] bg-black/75 px-3 py-1.5 text-center text-xs font-medium text-white backdrop-blur">{children}</p>;
-}
-
-function Toast({ toast, onClose }) {
+/**
+ * The app's one place for messages, at the top centre under the bar. A toast (a result, with an optional action)
+ * shows for a few seconds and then gives the place back to the standing notice (work in progress, a mode, or a
+ * problem with its fixes). Only one shows at a time, so a message is never repeated somewhere else.
+ */
+function Snackbar({ toast, notice, onClose }) {
+  const item = toast || notice;
+  if (!item) return null;
+  const error = item.tone === "error";
+  const actions = toast ? (toast.action ? [toast.action] : []) : notice.actions || [];
   return (
-    <div role="status" key={toast.id} className="fixed left-1/2 top-14 z-[150] flex max-w-[90%] -translate-x-1/2 items-center gap-2 rounded-[10px] border border-line2 bg-raised py-1 pl-3 pr-1 text-[13px] text-ink shadow-[0_14px_34px_-10px_rgb(0_0_0/0.7)]">
-      <span>{toast.text}</span>
-      {toast.action && <button type="button" className="rounded-[6px] px-2.5 py-1 text-[13px] font-semibold text-accent hover:bg-sel" onClick={() => { onClose(); toast.action.run(); }}>{toast.action.label}</button>}
-      <button type="button" aria-label="Dismiss" className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-mute hover:bg-sel hover:text-ink" onClick={onClose}><Icon name="x" size={13} /></button>
+    <div role={error ? "alert" : "status"} key={toast ? toast.id : notice.text.replace(/[\d:]+/g, "")}
+      className="fixed left-1/2 top-14 z-[150] flex w-max max-w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-[10px] border border-line2 bg-raised text-[13px] text-ink shadow-[0_14px_34px_-10px_rgb(0_0_0/0.7)]">
+      <div className="flex items-center gap-2.5 py-1 pl-3 pr-1">
+        {item.busy && <Icon name="loader" size={14} className="spin flex-none text-mute" />}
+        {error && <Icon name="alert" size={14} className="flex-none text-err" />}
+        <span className="flex min-w-0 flex-col py-1">
+          <span className={cx("tnum", (error || item.detail) && "font-medium")}>{item.text}</span>
+          {item.detail && <span className="text-xs leading-4 text-mute">{item.detail}</span>}
+        </span>
+        {item.kbd && <kbd className="flex-none rounded-[4px] bg-sel px-1.5 font-sans text-[10px] font-medium text-mute">{item.kbd}</kbd>}
+        {actions.map((action, i) => (
+          <button key={action.label} type="button" className={cx("flex-none whitespace-nowrap rounded-[6px] px-2.5 py-1 text-[13px] font-semibold hover:bg-sel", i === 0 ? "text-accent" : "text-mute hover:text-ink")}
+            onClick={() => { if (toast) onClose(); action.run(); }}>{action.label}</button>
+        ))}
+        {toast ? (
+          <button type="button" aria-label="Dismiss" className="inline-flex h-7 w-7 flex-none items-center justify-center rounded-[6px] text-mute hover:bg-sel hover:text-ink" onClick={onClose}><Icon name="x" size={13} /></button>
+        ) : <span className="w-2 flex-none" />}
+      </div>
+      {!toast && item.busy && (
+        <span className="h-[2px] w-full bg-line2">
+          {item.pct != null ? <span className="block h-full bg-accent transition-[width]" style={{ width: `${item.pct}%` }} /> : <span className="bar-processing block h-full w-full" />}
+        </span>
+      )}
     </div>
   );
 }
 
 /** Before the server has the clip: the file plays from the browser while it uploads and prepares. */
-function LocalPreview({ upload, sample, error, onChoose, onBack, now }) {
+function LocalPreview({ upload, sample }) {
   const src = upload?.url || (sample ? SAMPLE_CLIP.url : null);
   return (
     <div className="absolute inset-0">
       {src && <video src={src} muted loop playsInline autoPlay className="absolute inset-0 h-full w-full object-contain opacity-80" />}
-      {error ? (
-        <div className="absolute left-1/2 top-1/2 flex w-[min(420px,90%)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-[12px] border border-line2 bg-panel/95 p-4 text-[13px] shadow-[0_16px_40px_-12px_rgb(0_0_0/0.7)] backdrop-blur" role="alert">
-          <span className="font-semibold text-ink">{error.code === "clip_too_long" ? "This clip is too long" : "The clip could not be used"}</span>
-          <span className="text-mute">{uploadHelp(error)}</span>
-          <div className="mt-1 flex flex-wrap gap-2">
-            <Btn size="sm" variant="primary" icon="upload" onClick={onChoose}>Choose another clip</Btn>
-            <Btn size="sm" variant="ghost" onClick={onBack}>Back</Btn>
-          </div>
-        </div>
-      ) : upload && (
-        <div className="absolute bottom-4 left-1/2 flex w-[min(360px,86%)] -translate-x-1/2 flex-col gap-1.5 rounded-[12px] border border-line2 bg-panel/90 px-4 py-3 text-ink backdrop-blur" role="status">
-          <span className="text-[13px] font-medium">
-            {upload.phase === "prepare" ? `Preparing the clip · ${clock(now - (upload.started || now))}` : upload.phase === "upload" ? `Uploading${upload.pct != null ? ` · ${upload.pct}%` : "…"}` : sample ? "Loading the sample…" : "Checking the clip…"}
-          </span>
-          <span className="h-1 overflow-hidden rounded-full bg-line2">
-            {upload.phase === "upload" && upload.pct != null ? <span className="block h-full bg-accent" style={{ width: `${upload.pct}%` }} /> : <span className="bar-processing block h-full w-full" />}
-          </span>
-          <span className="text-xs text-mute">{upload.phase === "prepare" ? "CueFX makes a 24 fps copy to track, usually 10 to 20 s. Tracking starts next." : "The clip plays here meanwhile."}</span>
-        </div>
-      )}
     </div>
   );
 }

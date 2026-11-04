@@ -279,7 +279,6 @@ export default function Inspector(props) {
               <Prop label="On video">
                 <Tool icon="target" label={picking ? "Click the video…" : "Pick the point"} tip="Pick on the video" note="Click the person, or the exact point, to track." kbd="B" active={picking} disabled={!!switching} onClick={onPick} />
               </Prop>
-              {switching && <p className="flex items-center gap-1.5 text-xs leading-4 text-mute" role="status"><Icon name="loader" size={13} className="spin flex-none" />Tracking the {switching}… about 20 s. Your path, look and timing stay.</p>}
               {trackError && <ErrorLine as="p">{trackError}</ErrorLine>}
               <Notes group="anchor" warnings={warnings} />
             </Section>
