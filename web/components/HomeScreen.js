@@ -99,12 +99,12 @@ export default function HomeScreen({ onStart, onOpen, server }) {
         <span className="grid h-7 w-8 place-items-center rounded-[7px] bg-accent text-on-accent">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 18c4-9 10-12 16-12M17 3l3 3-3 3" /><circle cx="6" cy="17" r="2" /></svg>
         </span>
-        <span className="t-h2 text-ink">CueFX</span>
+        <span className="text-[15px] font-semibold text-ink">CueFX</span>
         <span className="flex-1" />
         <ServerMark server={server} />
       </div>
       <section ref={top} className="mx-auto flex max-w-[1200px] scroll-mt-4 flex-col items-center px-4 pt-6 pb-10 text-center sm:px-6 sm:pt-10">
-        <span className="inline-flex h-7 items-center gap-2 rounded-full border border-line2 px-3 t-overline text-mute">
+        <span className="inline-flex h-7 items-center gap-2 rounded-full bg-raised px-3 text-xs font-medium text-mute">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Directed VFX · ComfyUI + LTX-2.5
         </span>
@@ -130,7 +130,7 @@ export default function HomeScreen({ onStart, onOpen, server }) {
         {clips && clips.length > 0 && <RecentClips clips={clips} onOpen={(clip) => onOpen(clip, presetById(setup.preset))} />}
       </div>
       {dragging && (
-        <div className="pointer-events-none fixed inset-3 z-50 grid place-items-center rounded-[20px] border-2 border-dashed border-accent bg-bg/85 text-lg font-semibold text-ink">Drop to use this clip</div>
+        <div className="pointer-events-none fixed inset-3 z-50 grid place-items-center rounded-[16px] border-2 border-dashed border-line2 bg-bg/85 text-lg font-semibold text-ink">Drop to use this clip</div>
       )}
     </main>
   );
@@ -161,41 +161,41 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
 
   return (
     <div ref={bar} role="group" aria-label="Shot setup"
-      className="mt-8 flex w-full max-w-[760px] flex-col gap-1 rounded-[20px] border border-line2 bg-panel p-2 text-left sm:flex-row sm:items-center">
+      className="mt-8 flex w-full max-w-[760px] flex-col gap-1 rounded-[16px] border border-line2 bg-panel p-1.5 text-left sm:flex-row sm:items-center">
       <div className="relative w-full sm:w-auto sm:min-w-0">
         <button type="button" aria-haspopup="listbox" aria-expanded={open === "clip"} onClick={() => setOpen(open === "clip" ? null : "clip")}
-          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[14px] px-3.5 text-left transition-colors hover:bg-raised", open === "clip" && "bg-raised")}>
+          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised", open === "clip" && "bg-sel")}>
           {setup.clip === "file" ? <Icon name="film" size={18} className="flex-none text-mute" /> : <img src="/showcase/input.jpg" alt="" className="h-7 w-11 flex-none rounded-[6px] object-cover" />}
           <span className="flex min-w-0 flex-col">
-            <span className="t-overline text-mute">Clip</span>
+            <span className="text-[11px] font-medium text-faint">Clip</span>
             <span className="max-w-[260px] truncate text-sm font-medium text-ink">{clipValue}</span>
           </span>
           <Icon name="chevDown" size={14} className="ml-auto flex-none text-faint sm:ml-1" />
         </button>
         {open === "clip" && (
-          <ul role="listbox" aria-label="Clip" className="absolute top-[calc(100%+8px)] left-0 z-20 flex w-[330px] max-w-[calc(100vw-48px)] flex-col gap-0.5 rounded-[14px] border border-line2 bg-panel p-1.5 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]">
+          <ul role="listbox" aria-label="Clip" className="absolute top-[calc(100%+8px)] left-0 z-20 flex w-[330px] max-w-[calc(100vw-48px)] flex-col gap-0.5 rounded-[12px] border border-line2 bg-raised p-1 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.7)]">
             <li>
               <button type="button" role="option" aria-selected={setup.clip === "sample"} onClick={() => { setSetup((current) => ({ ...current, clip: "sample" })); setOpen(null); }}
-                className={cx("flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised", setup.clip === "sample" && "bg-raised")}>
+                className={cx("flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/70", setup.clip === "sample" && "bg-sel")}>
                 <img src="/showcase/input.jpg" alt="" className="h-8 w-14 flex-none rounded-[6px] object-cover" />
                 <span className="flex min-w-0 flex-1 flex-col"><span className="text-sm font-medium text-ink">Sample · rooftop kick</span><span className="text-xs text-faint">8 s · ready, nothing to upload</span></span>
-                {setup.clip === "sample" && <Icon name="check" size={14} className="flex-none text-accent" />}
+                {setup.clip === "sample" && <Icon name="check" size={14} className="flex-none text-ink" />}
               </button>
             </li>
             {setup.file && (
               <li>
                 <button type="button" role="option" aria-selected={setup.clip === "file"} onClick={() => { setSetup((current) => ({ ...current, clip: "file" })); setOpen(null); }}
-                  className={cx("flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised", setup.clip === "file" && "bg-raised")}>
-                  <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] bg-raised text-mute"><Icon name="film" size={16} /></span>
+                  className={cx("flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/70", setup.clip === "file" && "bg-sel")}>
+                  <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] bg-panel text-mute"><Icon name="film" size={16} /></span>
                   <span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-sm font-medium text-ink">{setup.file.name}</span><span className="text-xs text-faint">{setup.seconds ? `${Math.round(setup.seconds)} s · ` : ""}uploads when you start</span></span>
-                  {setup.clip === "file" && <Icon name="check" size={14} className="flex-none text-accent" />}
+                  {setup.clip === "file" && <Icon name="check" size={14} className="flex-none text-ink" />}
                 </button>
               </li>
             )}
             <li>
               <button type="button" role="option" aria-selected={false} onClick={() => { setOpen(null); onChooseFile(); }}
-                className="flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left hover:bg-raised">
-                <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] border border-dashed border-line2 text-accent"><Icon name="upload" size={16} /></span>
+                className="flex w-full items-center gap-3 rounded-[8px] px-2.5 py-2 text-left hover:bg-sel/70">
+                <span className="grid h-8 w-14 flex-none place-items-center rounded-[6px] border border-dashed border-line2 text-ink"><Icon name="upload" size={16} /></span>
                 <span className="flex min-w-0 flex-1 flex-col"><span className="text-sm font-medium text-ink">{setup.file ? "A different clip" : "Your clip"}</span><span className="text-xs text-faint">Choose a file · up to 15 s, one person in frame</span></span>
               </button>
             </li>
@@ -205,20 +205,20 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
       <span aria-hidden="true" className="hidden h-7 w-px flex-none bg-line sm:block" />
       <div className="relative w-full sm:w-auto">
         <button type="button" aria-haspopup="listbox" aria-expanded={open === "preset"} onClick={() => setOpen(open === "preset" ? null : "preset")}
-          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[14px] px-3.5 text-left transition-colors hover:bg-raised", open === "preset" && "bg-raised")}>
+          className={cx("flex h-[56px] w-full items-center gap-3 rounded-[12px] px-3.5 text-left transition-colors hover:bg-raised", open === "preset" && "bg-sel")}>
           <span className="block h-7 w-7 flex-none overflow-hidden rounded-full bg-black"><LookStill id={preset.look} className="h-full w-full" /></span>
           <span className="flex min-w-0 flex-col">
-            <span className="t-overline text-mute">Preset</span>
+            <span className="text-[11px] font-medium text-faint">Preset</span>
             <span className="truncate text-sm font-medium text-ink">{preset.name}</span>
           </span>
           <Icon name="chevDown" size={14} className="ml-auto flex-none text-faint sm:ml-1" />
         </button>
         {open === "preset" && (
-          <ul role="listbox" aria-label="Preset" className="absolute top-[calc(100%+8px)] left-0 z-20 grid w-[min(440px,calc(100vw-48px))] grid-cols-2 gap-1 rounded-[14px] border border-line2 bg-panel p-1.5 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]">
+          <ul role="listbox" aria-label="Preset" className="absolute top-[calc(100%+8px)] left-0 z-20 grid w-[min(440px,calc(100vw-48px))] grid-cols-2 gap-1 rounded-[12px] border border-line2 bg-raised p-1 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.7)]">
             {PRESETS.map((item) => (
               <li key={item.id}>
                 <button type="button" role="option" aria-selected={item.id === setup.preset} onClick={() => { setSetup((current) => ({ ...current, preset: item.id })); setOpen(null); }}
-                  className={cx("flex w-full flex-col gap-1.5 rounded-[10px] border p-1.5 text-left hover:bg-raised", item.id === setup.preset ? "border-accent bg-raised" : "border-transparent")}>
+                  className={cx("flex w-full flex-col gap-1.5 rounded-[8px] p-1.5 text-left", item.id === setup.preset ? "bg-sel" : "hover:bg-sel/60")}>
                   <span className="relative block h-16 w-full overflow-hidden rounded-[8px] bg-black">
                     <LookStill id={item.look} className="mx-auto h-full w-16" />
                     <span className="absolute bottom-1 right-1.5 text-faint"><MotionGlyph behaviour={item.behaviour} /></span>
@@ -232,7 +232,7 @@ function DirectBar({ setup, setSetup, onStart, onChooseFile, checking }) {
       </div>
       <span className="hidden flex-1 sm:block" />
       <button type="button" onClick={onStart} disabled={checking}
-        className="mt-1 inline-flex h-[56px] flex-none items-center justify-center gap-2 rounded-[14px] bg-accent px-6 text-[15px] font-medium text-on-accent transition-colors hover:bg-accent-hi disabled:opacity-50 sm:mt-0">
+        className="mt-1 inline-flex h-[56px] flex-none items-center justify-center gap-2 rounded-[12px] bg-accent px-6 text-[14px] font-semibold text-on-accent transition-colors hover:bg-accent-hi disabled:opacity-50 sm:mt-0">
         {setup.clip === "file" && setup.file ? "Start this shot" : setup.clip === "file" ? "Choose a clip" : "Try this shot"}
         <Icon name="chevRight" size={16} />
       </button>
@@ -273,10 +273,10 @@ function Monitor() {
   return (
     <figure className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Take" className="inline-flex rounded-full border border-line bg-panel p-[3px]">
+        <div role="group" aria-label="Take" className="inline-flex rounded-[8px] bg-raised p-0.5">
           {["prompted", "directed"].map((id) => (
             <button key={id} type="button" aria-pressed={take === id} onClick={() => setTake(id)}
-              className={cx("h-[30px] rounded-full px-3.5 text-[13px] font-medium capitalize transition-colors", take === id ? "bg-raised text-ink" : "text-mute hover:text-ink")}>
+              className={cx("h-7 rounded-[6px] px-3 text-[13px] font-medium capitalize transition-colors", take === id ? "bg-sel text-ink" : "text-mute hover:text-ink")}>
               {id}
             </button>
           ))}
@@ -284,7 +284,7 @@ function Monitor() {
         <span className="text-[13px] text-faint">Example result · same kick, same model. {TAKES[take].note}</span>
       </div>
 
-      <div className="relative aspect-video w-full overflow-hidden rounded-[20px] border border-line bg-black">
+      <div className="relative aspect-video w-full overflow-hidden rounded-[14px] border border-line bg-black">
         <video key={take} ref={video} src={TAKES[take].src} poster={TAKES[take].poster} muted loop playsInline preload="auto" className="absolute inset-0 h-full w-full object-cover" />
         {showHud && (
           <svg viewBox="0 0 160 90" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
@@ -338,7 +338,7 @@ function Monitor() {
 function SectionHead({ overline, title, body }) {
   return (
     <div className="flex max-w-[640px] flex-col gap-1.5">
-      <p className="t-overline text-accent">{overline}</p>
+      <p className="text-xs font-medium text-faint">{overline}</p>
       <h2 className="section-title text-ink">{title}</h2>
       {body && <p className="text-sm text-mute">{body}</p>}
     </div>
@@ -365,19 +365,19 @@ function Presets({ onPreset }) {
         {PRESETS.map((preset) => (
           <li key={preset.id}>
             <button type="button" onClick={() => onPreset(preset)} style={{ "--glow": LOOK_GLOW[preset.look] }}
-              className="preset-card group flex h-full w-full items-center gap-4 rounded-[14px] border border-line bg-panel p-3 text-left transition-colors hover:bg-raised">
+              className="preset-card group flex h-full w-full items-center gap-4 rounded-[12px] border border-line bg-panel p-3 text-left transition-colors hover:bg-raised">
               <span className="block h-20 w-20 flex-none overflow-hidden rounded-[10px] bg-black p-2">
                 <LookStill id={preset.look} className="h-full w-full transition-transform duration-300 group-hover:scale-110" />
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="flex items-center gap-1.5 text-faint">
                   <MotionGlyph behaviour={preset.behaviour} />
-                  <span className="t-overline">{BEHAVIOUR_TAG[preset.behaviour]}</span>
+                  <span className="text-[11px] font-medium">{BEHAVIOUR_TAG[preset.behaviour]}</span>
                 </span>
                 <span className="t-h3 text-ink">{preset.name}</span>
                 <span className="line-clamp-2 text-[13px] leading-[18px] text-mute">{preset.note}</span>
               </span>
-              <Icon name="chevRight" size={16} className="flex-none text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
+              <Icon name="chevRight" size={16} className="flex-none text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
             </button>
           </li>
         ))}

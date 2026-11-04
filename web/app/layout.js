@@ -1,10 +1,9 @@
 import localFont from "next/font/local";
 import "./globals.css";
 
-// VestraPath type system: Outfit for UI and body, Plus Jakarta Sans for the single display role.
-// Self-hosted so `next build` never fetches from Google Fonts.
-const outfit = localFont({ src: "./fonts/outfit-latin.woff2", weight: "400 600", variable: "--font-ui", display: "swap" });
-const jakarta = localFont({ src: "./fonts/plus-jakarta-sans-latin-700.woff2", weight: "700", variable: "--font-display", display: "swap" });
+// Inter, as in tools like Framer and Figma: one family for the UI and the headings. Self-hosted so
+// `next build` never fetches from Google Fonts.
+const inter = localFont({ src: "./fonts/inter-latin.woff2", weight: "100 900", variable: "--font-ui", display: "swap" });
 
 export const metadata = {
   title: "CueFX · Make the effect follow the move",
@@ -18,7 +17,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" data-theme="dark" className={`${outfit.variable} ${jakarta.variable}`}>
+    <html lang="en" data-theme="dark" className={inter.variable}>
       <body>{children}</body>
     </html>
   );

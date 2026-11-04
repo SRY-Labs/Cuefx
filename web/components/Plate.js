@@ -91,7 +91,7 @@ export default function Plate({ clip, frame, setFrame, playing, onEnded, onClick
   }
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden rounded-md bg-well">
+    <div className="relative min-h-0 flex-1 overflow-hidden bg-well">
       <img
         key={`still-${still.attempt}`}
         alt=""

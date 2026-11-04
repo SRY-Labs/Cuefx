@@ -84,13 +84,13 @@ export function Icon({ name, size = 16, className, stroke = 2 }) {
 export function Btn({ variant = "secondary", size = "md", children, className, icon, ...props }) {
   const styles = {
     primary: "bg-accent text-on-accent hover:bg-accent-hi",
-    secondary: "bg-panel text-ink border border-line2 hover:bg-raised",
+    secondary: "bg-raised text-ink hover:bg-sel",
     ghost: "text-mute hover:text-ink hover:bg-raised",
-    danger: "bg-err/15 text-err border border-err/40 hover:bg-err/25",
+    danger: "bg-err/15 text-err hover:bg-err/25",
   };
-  const height = size === "sm" ? "h-7 px-3 text-xs" : "h-9 px-4 text-sm";
+  const height = size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[13px]";
   return (
-    <button type="button" className={cx("inline-flex items-center gap-2 rounded-[10px] font-medium transition-colors disabled:opacity-45", height, styles[variant], className)} {...props}>
+    <button type="button" className={cx("inline-flex items-center gap-1.5 whitespace-nowrap rounded-[8px] font-medium transition-colors disabled:opacity-45", height, styles[variant], className)} {...props}>
       {icon && <Icon name={icon} size={14} />}
       {children}
     </button>
@@ -99,7 +99,7 @@ export function Btn({ variant = "secondary", size = "md", children, className, i
 
 export function IconBtn({ icon, label, active, className, ...props }) {
   return (
-    <button type="button" aria-label={label} title={label} className={cx("inline-flex h-8 w-8 items-center justify-center rounded border disabled:opacity-40", active ? "border-accent bg-accent/20 text-accent" : "border-line2 bg-raised text-mute hover:text-ink", className)} {...props}>
+    <button type="button" aria-label={label} title={label} className={cx("inline-flex h-8 w-8 items-center justify-center rounded-[8px] border disabled:opacity-40", active ? "border-transparent bg-sel text-ink" : "border-transparent bg-raised text-mute hover:text-ink", className)} {...props}>
       <Icon name={icon} size={15} />
     </button>
   );
@@ -107,7 +107,7 @@ export function IconBtn({ icon, label, active, className, ...props }) {
 
 export function Alert({ error, children, action, icon }) {
   return (
-    <div role="alert" title={error?.code ? `${error.code}${error.status ? ` · ${error.status}` : ""}` : undefined} className={cx("rounded-[10px] border border-err/40 px-3 py-2 text-sm", icon ? "bg-err/5" : "bg-err/10")}>
+    <div role="alert" title={error?.code ? `${error.code}${error.status ? ` · ${error.status}` : ""}` : undefined} className={cx("rounded-[8px] border border-err/40 px-3 py-2 text-[13px]", icon ? "bg-err/5" : "bg-err/10")}>
       {icon
         ? <div className="flex items-center gap-1.5 font-semibold text-err"><Icon name={icon} size={15} className="flex-none" />{children}</div>
         : <div className="font-semibold text-ink">{children}</div>}
@@ -134,7 +134,7 @@ export function Num({ value, min, max, step = 1, onChange, disabled }) {
     <input
       type="number"
       inputMode="decimal"
-      className="h-7 w-full min-w-[4.5rem] rounded border border-line bg-field px-1.5 text-xs text-ink tnum disabled:opacity-40"
+      className="fx-field h-[30px] w-full min-w-0 px-2.5 text-xs tnum disabled:opacity-40"
       value={text ?? value ?? ""}
       min={min}
       max={max}
@@ -156,10 +156,10 @@ const SEG_COLUMNS = { 2: "grid grid-cols-2", 3: "grid grid-cols-3" };
 
 export function Seg({ label, value, options, onChange, disabled, columns }) {
   return (
-    <div role="radiogroup" aria-label={label} className={cx("gap-0.5 rounded border border-line bg-field p-0.5", columns ? SEG_COLUMNS[columns] : "flex")}>
+    <div role="radiogroup" aria-label={label} className={cx("gap-0.5 rounded-[8px] bg-field p-0.5", columns ? SEG_COLUMNS[columns] : "flex")}>
       {options.map(([id, text]) => (
         <button key={id} type="button" role="radio" aria-checked={value === id} title={text} disabled={disabled} onClick={() => onChange(id)}
-          className={cx("flex min-h-[30px] min-w-0 items-center justify-center rounded-sm px-0.5 py-0.5 text-center text-[10.5px] leading-tight disabled:opacity-35", columns ? "" : "flex-1", value === id ? "bg-accent/20 text-accent" : "text-mute hover:bg-raised hover:text-ink")}>
+          className={cx("flex min-h-[26px] min-w-0 items-center justify-center rounded-[6px] px-0.5 text-center text-xs leading-tight disabled:opacity-35", columns ? "" : "flex-1", value === id ? "bg-sel text-ink" : "text-mute hover:text-ink")}>
           <span>{text}</span>
         </button>
       ))}
@@ -195,7 +195,7 @@ export function Row({ label, hint, children }) {
 export function Note({ severity = "info", children }) {
   const tone = severity === "error" ? "text-err" : severity === "warning" ? "text-warn" : "text-mute";
   return (
-    <div className="flex gap-1.5 rounded border border-line bg-bg px-2 py-1.5" role="status">
+    <div className="flex gap-1.5 rounded-[8px] bg-field px-2.5 py-2" role="status">
       <Icon name={severity === "info" ? "info" : "alert"} size={14} className={cx("mt-px flex-none", tone)} />
       <p className="text-xs leading-4 text-ink">{children}</p>
     </div>
@@ -261,11 +261,11 @@ function TipBox({ id, at, side, title, note, kbd, preview }) {
   }, [at, side]);
   return (
     <span ref={box} id={id} role="tooltip" style={pos}
-      className="pointer-events-none fixed z-[200] flex w-max max-w-[240px] flex-col gap-1 rounded-[10px] border border-line2 bg-raised px-3 py-2 text-left shadow-[0_14px_34px_-10px_rgb(0_0_0/0.7)]">
+      className="pointer-events-none fixed z-[200] flex w-max max-w-[240px] flex-col gap-1 rounded-[8px] border border-line2 bg-raised px-2.5 py-1.5 text-left shadow-[0_12px_30px_-8px_rgb(0_0_0/0.7)]">
       {preview}
       <span className="flex items-center gap-2 whitespace-nowrap text-xs font-semibold text-ink">
         {title}
-        {kbd && <kbd className="ml-auto rounded border border-line2 px-1.5 font-sans text-[10px] font-medium text-mute">{kbd}</kbd>}
+        {kbd && <kbd className="ml-auto rounded-[4px] bg-sel px-1.5 font-sans text-[10px] font-medium text-mute">{kbd}</kbd>}
       </span>
       {note && <span className="text-[11.5px] font-normal leading-4 text-mute">{note}</span>}
     </span>

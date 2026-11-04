@@ -1,26 +1,29 @@
 @import "tailwindcss";
 
 :root, [data-theme="dark"] {
+  /* Framer-like dark greys for every surface; the green stays for actions (VestraPath). */
   color-scheme: dark;
-  --c-bg: 14 14 13;
-  --c-panel: 27 27 24;
-  --c-raised: 46 46 43;
-  --c-field: 14 14 13;
-  --c-well: 14 14 13;
-  --c-line: 45 45 42;
-  --c-line2: 55 55 52;
-  --c-ink: 247 247 246;
-  --c-mute: 195 195 189;
-  --c-faint: 151 151 144;
+  --font-display: var(--font-ui);
+  --c-bg: 14 14 14;        /* app background, viewer stage */
+  --c-panel: 20 20 20;     /* bars, side panel, timeline card */
+  --c-raised: 34 34 34;    /* secondary buttons, hover, menus */
+  --c-field: 34 34 34;     /* inputs and the track of a segmented control */
+  --c-sel: 56 56 56;       /* the selected item: a lighter grey, never the accent */
+  --c-well: 8 8 8;         /* behind the video */
+  --c-line: 34 34 34;
+  --c-line2: 46 46 46;
+  --c-ink: 245 245 245;
+  --c-mute: 168 168 168;
+  --c-faint: 128 128 128;
   --c-accent: 67 174 122;
-  --c-accent-hi: 136 215 171;
+  --c-accent-hi: 99 196 147;
   --c-on-accent: 0 0 0;
   --c-track: 86 180 233;
   --c-path: 240 228 66;
   --c-occ: 229 138 192;
   --c-warn: 233 185 120;
-  --c-err: 253 169 162;
-  --c-lane: 14 14 13;
+  --c-err: 253 140 130;
+  --c-lane: 26 26 26;
   --c-ph-entrance: 136 141 227;
   --c-ph-held: 10 170 184;
   --c-ph-flight: 196 138 46;
@@ -48,6 +51,7 @@
   --c-warn: 98 64 1;
   --c-err: 112 49 46;
   --c-lane: 237 237 234;
+  --c-sel: 228 228 228;
   --c-ph-entrance: 109 112 194;
   --c-ph-held: 0 139 150;
   --c-ph-flight: 165 109 0;
@@ -60,6 +64,7 @@
   --color-raised: rgb(var(--c-raised));
   --color-field: rgb(var(--c-field));
   --color-well: rgb(var(--c-well));
+  --color-sel: rgb(var(--c-sel));
   --color-line: rgb(var(--c-line));
   --color-line2: rgb(var(--c-line2));
   --color-ink: rgb(var(--c-ink));
@@ -88,8 +93,9 @@ body {
   background: rgb(var(--c-bg));
   color: rgb(var(--c-ink));
   font-family: var(--font-ui), system-ui, "Segoe UI", sans-serif;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
+  font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
 }
 @layer base { button, input, select { font: inherit; color: inherit; } }
@@ -105,9 +111,9 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 input[type="range"].cue-range { -webkit-appearance: none; appearance: none; height: 20px; background: transparent; width: 100%; margin: 0; }
-input[type="range"].cue-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, rgb(var(--c-accent)) var(--fill, 0%), rgb(var(--c-line2)) var(--fill, 0%)); }
+input[type="range"].cue-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--fill-c, rgb(var(--c-mute))) var(--fill, 0%), rgb(var(--c-line2)) var(--fill, 0%)); }
 input[type="range"].cue-range::-moz-range-track { height: 4px; border-radius: 2px; background: rgb(var(--c-line2)); }
-input[type="range"].cue-range::-moz-range-progress { height: 4px; border-radius: 2px; background: rgb(var(--c-accent)); }
+input[type="range"].cue-range::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--fill-c, rgb(var(--c-mute))); }
 input[type="range"].cue-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: rgb(var(--c-ink)); border: 2px solid rgb(var(--c-panel)); }
 input[type="range"].cue-range:disabled { opacity: 0.4; }
 
@@ -129,7 +135,7 @@ input[type="range"].cue-range:disabled { opacity: 0.4; }
 }
 
 /* VestraPath type roles used on the landing and flow screens. */
-.t-display-l { font-family: var(--font-display), var(--font-ui), sans-serif; font-size: 32px; line-height: 38px; font-weight: 700; letter-spacing: -0.015em; }
+.t-display-l { font-family: var(--font-display), var(--font-ui), sans-serif; font-size: 32px; line-height: 38px; font-weight: 700; letter-spacing: -0.03em; }
 .t-h1 { font-size: 24px; line-height: 30px; font-weight: 600; letter-spacing: -0.01em; }
 .t-h2 { font-size: 19px; line-height: 25px; font-weight: 600; }
 .t-h3 { font-size: 16px; line-height: 22px; font-weight: 600; }
@@ -146,9 +152,15 @@ input[type="range"].compare-range { -webkit-appearance: none; appearance: none; 
 .hero-title { font-family: var(--font-display), var(--font-ui), sans-serif; font-weight: 700; font-size: 36px; line-height: 40px; letter-spacing: -0.03em; }
 @media (min-width: 640px) { .hero-title { font-size: 48px; line-height: 52px; } }
 @media (min-width: 1280px) { .hero-title { font-size: 60px; line-height: 64px; } }
-.section-title { font-family: var(--font-display), var(--font-ui), sans-serif; font-weight: 700; font-size: 24px; line-height: 30px; letter-spacing: -0.02em; }
+.section-title { font-family: var(--font-display), var(--font-ui), sans-serif; font-weight: 650; font-size: 24px; line-height: 30px; letter-spacing: -0.03em; }
 .preset-card:hover { border-color: rgb(var(--glow) / 0.45); }
 .hud-text { paint-order: stroke; stroke: rgb(0 0 0 / 0.75); stroke-width: 0.45px; stroke-linejoin: round; }
 
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Framer-style textareas and inputs: a flat grey field, a quiet ring on focus. */
+.fx-field { background: rgb(var(--c-field)); border: 1px solid transparent; border-radius: 8px; color: rgb(var(--c-ink)); }
+.fx-field:hover:not(:disabled) { border-color: rgb(var(--c-line2)); }
+.fx-field:focus { border-color: rgb(var(--c-accent) / 0.8); outline: none; }
+.fx-field[aria-invalid="true"] { border-color: rgb(var(--c-err)); }

@@ -6,27 +6,38 @@ For the SRY Labs team. This is the `ux/editor-workspace` branch. It replaces the
 
 The old flow had four screens: Upload, Track, Direct, Render. Each one asked for its own setup, moved the user on when it was done, and hid what came before. VFX artists work differently. In After Effects, CapCut or Nuke there is one viewer, one timeline and a properties panel. Every setting stays editable, previews are instant, and a render is a deliberate press that produces a version. The workspace follows that model:
 
-- **One screen.** The viewer is on the left, with the timeline right under it and the takes strip below that. The effect's settings run the full height on the right.
-- **Nothing moves the user.** Upload, tracking and renders report in place: the top bar, the tracking lane and the takes strip. When a take finishes, a message offers Watch. The viewer never switches by itself.
+- **One screen.** The viewer is on the left, with the timeline right under it. The effect's settings run the full height on the right, in two tabs: Effect and Prompt. Takes open in their own player.
+- **Nothing moves the user.** Upload, tracking and renders report in place: the top bar, the tracking lane and the Takes button. When a take finishes, a message offers Watch. The viewer and the settings tabs never switch by themselves.
 - **Every setting lives in one place, and stays editable.** Changing the body point re-tracks in place and keeps the path, look, size and timing.
 
 ## The flow
 
 1. **Landing.** The user chooses a Clip (the sample, or their own file) and a Preset (Plasma charge-up, Fireball throw, Orbiting spark, Ice in hand), then presses Try this shot. A file is checked for length and size as soon as it is chosen, or dropped anywhere on the page. A preset only sets the starting look and behaviour.
 2. **The editor opens straight away.** An uploaded clip plays from the browser while it uploads and prepares. Then the server's frames take over and tracking runs. The tracking lane fills, and the header shows a timer.
-3. **The user shapes the effect.** The settings are in four groups, Anchor, Motion, Look and Prompt. Each group header shows a summary, so they can be read with the groups closed.
+3. **The user shapes the effect.** The Effect tab has Anchor, Motion and Look; the Prompt tab has the styled frame, the video and the seed. Every section opens and closes, and a closed one shows its value.
 4. **Render.** Pressed while the clip is still uploading or tracking, it queues and starts when the cue is checked. A take runs the guide pass, the styled frame, then the video. The user can keep editing meanwhile.
-5. **Takes.** The strip under the timeline reads Edit, Take 1, Take 2 and so on. Clicking a take shows it in the viewer, with its seed and frames, "Use these settings", and downloads for the video, the styled frame and the guide pass. A failed stage keeps the stages before it and offers Retry from that stage.
+5. **Takes.** The Takes button opens a full-screen player: the takes listed on the left, the result large, a transport with frame steps, loop, speed and side-by-side compare. It has "Use these settings" and downloads for the video, the styled frame and the guide pass. A failed stage keeps the stages before it and offers Retry from that stage.
+
+## The look
+
+The workspace follows Framer's dark properties panel. The full token list is in `web/app/globals.css`.
+
+- **Surfaces are dark greys.** The app background is `#0E0E0E`, bars and panels are `#141414`, and fields and secondary buttons are `#222222`. Lines are `#222222` and `#2E2E2E`.
+- **A selected item is a lighter grey (`#383838`), never the accent.** This covers segmented controls, tiles, tabs, tools and the takes list.
+- **Green is only for actions and progress.** It is used for Render, Download, Try this shot, the playhead, upload and render progress, and the focus ring. It is VestraPath's `#43AE7A`, with black text.
+- **One grid in the settings panel.** Every row has a 72 px label column, a control column that fills the rest, and 30 px controls. A label next to a control that takes several rows sits at the top.
+- **The timeline lanes are all 32 px tall.** Tracked, Effect and Path each draw their bar or marks in the same 20 px band in the middle of the lane.
+- **Type is Inter,** self-hosted, at 12 to 13 px in the editor.
 
 ## Controls
 
 | Where | What | API it uses |
 | --- | --- | --- |
-| Anchor | Body point (palm, fist, foot, knee, shoulder, head) with icons, left or right, pick on the video (B). Shows unsure frames inside the effect, with Show. | `POST /clips/{id}/cue` |
+| Anchor | Body point (palm, fist, foot, knee, shoulder, head) with icons, left or right, pick on the video (B). | `POST /clips/{id}/cue` |
 | Motion | Behaviour (icons with tooltips). Appear, Release, Vanish and Gone in frames, plus Entrance in seconds. Path: Add, Reset, Even out. The selected point: frame, X/Y, easing, delete. Orbit radius, speed and tilt. | `cue/normalize`, `cue/validate`, `cue/preview`, `cue/timing` |
 | Look | The five looks, size, ending, shape, spin (with Default), glow, tint, offset | same as above |
-| Prompt | The styled-frame prompt, Auto (written from look and behaviour) or Custom, up to 800 characters, with checks. The video prompt, Auto or Custom. The seed, with a dice for a new one. | `generations`, `jobs/{id}/video` |
-| Viewer | Select (V), Draw path (P), Pick (B), Pan (H). Guides on or off (G). Zoom: Fit, 150%, 200%, 300%. | |
+| Prompt tab | The styled-frame prompt, Auto (written from look and behaviour) or Custom, up to 800 characters, with checks. The video prompt, Auto or Custom. The seed, with a dice for a new one. A dot on the tab shows an error (red) or wording that still describes another look (amber). | `generations`, `jobs/{id}/video` |
+| Viewer | A toolbar over the video, bottom centre: Select (V), Draw path (P), Pick (B), Loop (L). Guides on or off (G) in the bar above the video. | |
 | Timeline | Frame step, play, loop the effect (L), snap, zoom in or out, Fit. Effect edges and point diamonds can be dragged; edges can also be moved with the arrow keys. | |
 | Top bar | Undo (Ctrl Z), Redo (Ctrl Shift Z), and Render with a menu: Render take or Guide pass only | `jobs`, `generations`, `jobs/{id}/video` |
 

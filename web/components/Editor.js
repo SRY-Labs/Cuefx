@@ -6,7 +6,7 @@ import {
 } from "../lib/api";
 import {
   addPathPoint, anchorAt, clipLine, cueForWire, deletePathPoint, drawnRoute, holdsOnBody, lookById, movePathPoint, moveRelease, orbAt,
-  partName, partOf, phaseTimes, pointAt, setPointFrame, setTiming, sideOf, toThrow, withDiameter, withLook,
+  partName, partOf, phaseTimes, pointAt, setPointFrame, setTiming, sideOf, timecode, toThrow, withDiameter, withLook,
 } from "../lib/cue";
 import { SAMPLE_CLIP, SAMPLE_ROUTE, autoPrompt } from "../lib/presets";
 import { checkPrompt } from "../lib/prompt";
@@ -666,53 +666,74 @@ export default function Editor({ source, preset, onBack }) {
 
   return (
     <main className="relative flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="flex h-12 flex-none items-center gap-2 border-b border-line bg-panel px-2.5 sm:px-3">
-        <Tip title="CueFX home" side="bottom">
-          <button type="button" aria-label="Back to the landing page" onClick={goHome} className="grid h-7 w-8 place-items-center rounded-[7px] bg-accent text-on-accent hover:bg-accent-hi"><Mark /></button>
-        </Tip>
-        <h1 className="min-w-0 truncate text-sm font-semibold">{clip?.filename || upload?.name || (sample ? SAMPLE_CLIP.name : "New shot")}</h1>
-        {clip && <span className="hidden truncate text-xs text-faint tnum lg:inline">{clipLine(clip)}</span>}
-        {status && <span className="hidden items-center gap-1.5 truncate text-xs text-mute sm:inline-flex" role="status"><Icon name="loader" size={12} className="spin" />{status}</span>}
-        <span className="flex-1" />
-        <Tip title="Undo" kbd="Ctrl Z" side="bottom">
-          <button type="button" aria-label="Undo" disabled={!history.current.past.length} onClick={undo} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-mute hover:bg-raised hover:text-ink disabled:opacity-35"><Icon name="undo" size={15} /></button>
-        </Tip>
-        <Tip title="Redo" kbd="Ctrl Shift Z" side="bottom">
-          <button type="button" aria-label="Redo" disabled={!history.current.future.length} onClick={redo} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-mute hover:bg-raised hover:text-ink disabled:opacity-35"><Icon name="redo" size={15} /></button>
-        </Tip>
-        <span aria-hidden="true" className="mx-1 h-5 w-px bg-line2" />
+      <header className="grid h-12 flex-none grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-line bg-bg px-2.5 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="flex min-w-0 items-center gap-1">
+          <Tip title="CueFX home" note="Back to the landing page." side="bottom">
+            <button type="button" aria-label="CueFX home" onClick={goHome} className="inline-flex h-8 flex-none items-center gap-2 rounded-[8px] bg-raised pl-1.5 pr-2.5 text-[13px] font-semibold text-ink hover:bg-sel">
+              <span className="grid h-5 w-5 place-items-center rounded-[5px] bg-accent text-on-accent"><Mark /></span>CueFX
+            </button>
+          </Tip>
+          <Tip title="Undo" kbd="Ctrl Z" side="bottom">
+            <button type="button" aria-label="Undo" disabled={!history.current.past.length} onClick={undo} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-mute hover:bg-raised hover:text-ink disabled:opacity-35"><Icon name="undo" size={15} /></button>
+          </Tip>
+          <Tip title="Redo" kbd="Ctrl Shift Z" side="bottom">
+            <button type="button" aria-label="Redo" disabled={!history.current.future.length} onClick={redo} className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-mute hover:bg-raised hover:text-ink disabled:opacity-35"><Icon name="redo" size={15} /></button>
+          </Tip>
+          <h1 className="ml-1 min-w-0 truncate text-[13px] font-medium text-ink md:hidden">{clip?.filename || upload?.name || (sample ? SAMPLE_CLIP.name : "New shot")}</h1>
+        </div>
+        <div className="hidden min-w-0 max-w-[44vw] items-center justify-center gap-2 md:flex">
+          <span className="min-w-0 truncate text-[13px] font-medium text-ink">{clip?.filename || upload?.name || (sample ? SAMPLE_CLIP.name : "New shot")}</span>
+          {status ? (
+            <span className="inline-flex h-5 flex-none items-center gap-1.5 rounded-[5px] bg-raised px-1.5 text-[11px] text-mute tnum" role="status"><Icon name="loader" size={11} className="spin" />{status}</span>
+          ) : clip && <span className="hidden h-5 flex-none items-center rounded-[5px] bg-raised px-1.5 text-[11px] text-faint tnum lg:inline-flex">{clipLine(clip)}</span>}
+        </div>
+        <div className="flex items-center justify-end gap-1.5">
         <TakesButton takes={takes} now={now} onOpen={() => takes.length && setPlayer(takes[takes.length - 1].id)} />
         <div className="relative flex" data-menu>
           <Tip side="bottom" align="end" title={pending ? "Queued" : "Render"}
             note={renderBlock || (pending ? "Starts as soon as tracking finishes. Click to cancel." : "Guide pass, styled frame, then video · about 3 to 4 minutes. You can keep editing.")}>
             <button type="button" disabled={!!renderBlock} onClick={() => (pending ? setPending(null) : render("full"))}
-              className={cx("inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-l-[9px] px-3 text-sm font-medium disabled:opacity-45 sm:px-3.5", pending ? "bg-accent/20 text-accent" : "bg-accent text-on-accent hover:bg-accent-hi")}>
-              <Icon name={pending ? "clock" : "sparkle"} size={15} />{renderLabel}
+              className={cx("inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-l-[8px] px-3 text-[13px] font-medium disabled:opacity-45", pending ? "bg-accent/20 text-accent" : "bg-accent text-on-accent hover:bg-accent-hi")}>
+              <Icon name={pending ? "clock" : "sparkle"} size={14} />{renderLabel}
             </button>
           </Tip>
           <button type="button" aria-label="Render options" aria-haspopup="menu" aria-expanded={renderMenu} disabled={!!renderBlock} onClick={() => setRenderMenu((value) => !value)}
-            className="inline-flex h-8 w-7 items-center justify-center rounded-r-[9px] border-l border-black/20 bg-accent text-on-accent hover:bg-accent-hi disabled:opacity-45">
+            className={cx("inline-flex h-8 w-7 items-center justify-center rounded-r-[8px] border-l border-black/20 disabled:opacity-45", pending ? "bg-accent/20 text-accent" : "bg-accent text-on-accent hover:bg-accent-hi")}>
             <Icon name="chevDown" size={14} />
           </button>
           {renderMenu && (
-            <div role="menu" className="absolute right-0 top-[calc(100%+6px)] z-50 flex w-[260px] flex-col rounded-[12px] border border-line2 bg-panel p-1 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.6)]">
-              <button type="button" role="menuitem" onClick={() => render("full")} className="flex flex-col rounded-[8px] px-2.5 py-2 text-left hover:bg-raised">
-                <span className="flex items-center gap-2 text-sm font-medium text-ink"><Icon name="sparkle" size={14} />Render take</span>
+            <div role="menu" className="absolute right-0 top-[calc(100%+6px)] z-50 flex w-[260px] flex-col rounded-[10px] border border-line2 bg-raised p-1 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.7)]">
+              <button type="button" role="menuitem" onClick={() => render("full")} className="flex flex-col rounded-[6px] px-2.5 py-2 text-left hover:bg-sel">
+                <span className="flex items-center gap-2 text-[13px] font-medium text-ink"><Icon name="sparkle" size={14} />Render take</span>
                 <span className="pl-[22px] text-xs text-faint">Guide pass, styled frame, video</span>
               </button>
-              <button type="button" role="menuitem" onClick={() => render("guide")} className="flex flex-col rounded-[8px] px-2.5 py-2 text-left hover:bg-raised">
-                <span className="flex items-center gap-2 text-sm font-medium text-ink"><Icon name="film" size={14} />Guide pass only</span>
+              <button type="button" role="menuitem" onClick={() => render("guide")} className="flex flex-col rounded-[6px] px-2.5 py-2 text-left hover:bg-sel">
+                <span className="flex items-center gap-2 text-[13px] font-medium text-ink"><Icon name="film" size={14} />Guide pass only</span>
                 <span className="pl-[22px] text-xs text-faint">The effect drawn on your footage, under a minute</span>
               </button>
             </div>
           )}
         </div>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto min-[901px]:flex-row min-[901px]:overflow-hidden">
-        <div className="flex min-w-0 flex-none flex-col gap-2 p-2.5 min-[901px]:min-h-0 min-[901px]:flex-1">
-          {checkError && <div role="alert" className="rounded-[10px] border border-err/40 bg-err/10 px-3 py-2 text-sm"><span className="font-semibold">The settings could not be checked.</span> <span className="text-mute">{checkError.message}</span> <button type="button" className="font-medium text-accent hover:underline" onClick={() => cue && refresh(cue)}>Try again</button></div>}
-          <div className="relative flex min-h-[240px] flex-1 flex-col overflow-hidden rounded-[12px] bg-well max-[900px]:aspect-video max-[900px]:flex-none">
+        <div className="flex min-w-0 flex-none flex-col gap-3 p-3 min-[901px]:min-h-0 min-[901px]:flex-1">
+          {checkError && <div role="alert" className="rounded-[8px] bg-err/10 px-3 py-2 text-[13px]"><span className="font-semibold">The settings could not be checked.</span> <span className="text-mute">{checkError.message}</span> <button type="button" className="font-medium text-accent hover:underline" onClick={() => cue && refresh(cue)}>Try again</button></div>}
+          <div className="flex min-h-0 flex-1 flex-col max-[900px]:flex-none">
+          <div className="flex h-8 flex-none items-center gap-2 rounded-t-[10px] border border-b-0 border-line bg-panel pl-3 pr-1 text-xs text-mute">
+            <span className="font-medium text-ink">Viewer</span>
+            {clip ? <span className="tnum">f {frame} · {timecode(frame, fps)}</span> : <span>{upload || sample ? "Getting the clip ready" : "No clip"}</span>}
+            <span className="flex-1" />
+            {clip && (
+              <Tip title={guides ? "Hide guides" : "Show guides"} note="The tracked point, the path and the preview effect." kbd="G" side="bottom" align="end">
+                <button type="button" aria-pressed={guides} onClick={() => setGuides((value) => !value)} className={cx("inline-flex h-6 items-center gap-1.5 rounded-[6px] px-2 text-xs font-medium hover:bg-raised", guides ? "text-ink" : "text-mute")}>
+                  <Icon name={guides ? "eye" : "eyeOff"} size={13} />Guides
+                </button>
+              </Tip>
+            )}
+          </div>
+          <div className="relative flex min-h-[240px] flex-1 flex-col overflow-hidden rounded-b-[10px] border border-t-0 border-line bg-well max-[900px]:aspect-video max-[900px]:flex-none">
             {!clip ? (
               <LocalPreview upload={upload} sample={sample} error={uploadError} onChoose={() => fileInput.current?.click()} onBack={goHome} now={now} />
             ) : (
@@ -754,15 +775,15 @@ export default function Editor({ source, preset, onBack }) {
                     </Plate>
                   </div>
                 </div>
-                <div role="toolbar" aria-label="Viewer tools" className="absolute left-3 top-3 z-10 flex flex-col gap-0.5 rounded-[11px] border border-line bg-bg/85 p-[3px] backdrop-blur">
+                <div role="toolbar" aria-label="Viewer tools" className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-[12px] border border-line2 bg-panel/90 p-1 shadow-[0_10px_30px_rgb(0_0_0/0.5)] backdrop-blur-md">
                   <ToolBtn icon="cursor" label="Select and move" kbd="V" active={tool === "select" && !picking} onClick={() => { setTool("select"); setPicking(null); }} />
                   <ToolBtn icon="pen" label="Draw path" note={hold ? "Hold and Orbit stay on the body point, so they have no path." : "Each click adds a point after the last one."} kbd="P" active={tool === "draw" && !picking} disabled={!ready || hold} onClick={() => { setTool("draw"); setPicking(null); }} />
                   <ToolBtn icon="target" label="Pick on the video" note="Click the person, or the exact point, to track." kbd="B" active={!!picking} disabled={!clip || !!switching} onClick={togglePick} />
-                </div>
-                <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-                  <Tip title={guides ? "Hide guides" : "Show guides"} note="The tracked point, the path and the preview effect." kbd="G" side="bottom" align="end">
-                    <button type="button" aria-pressed={guides} onClick={() => setGuides((value) => !value)} className={cx("inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-line bg-bg/85 px-2.5 text-xs font-medium backdrop-blur", guides ? "text-ink" : "text-mute")}>
-                      <Icon name={guides ? "eye" : "eyeOff"} size={14} />Guides
+                  <span aria-hidden="true" className="mx-1 h-[18px] w-px bg-line2" />
+                  <Tip title="Loop the effect" note="Playback repeats the effect's frames." kbd="L" side="top">
+                    <button type="button" aria-pressed={loop} disabled={!ready} onClick={() => setLoop((value) => !value)}
+                      className={cx("inline-flex h-8 items-center gap-1.5 rounded-[8px] px-2.5 text-xs font-medium disabled:opacity-35", loop ? "bg-sel text-ink" : "text-mute hover:text-ink")}>
+                      <Icon name="loop" size={14} />Loop
                     </button>
                   </Tip>
                 </div>
@@ -770,7 +791,7 @@ export default function Editor({ source, preset, onBack }) {
                 {picking && <Pill>Click the {picking.part === "head" ? "head" : `${picking.side} ${picking.part}`} on the video · Esc to cancel</Pill>}
                 {!picking && tool === "draw" && ready && !hold && <Pill>Click to add a point after the last one · V to move points, including the release</Pill>}
                 {trackState === "failed" && trackError && !picking && (
-                  <div className="absolute left-1/2 top-1/2 z-10 flex w-[min(440px,90%)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-[14px] border border-line2 bg-panel/95 p-4 text-sm shadow-lg" role="alert">
+                  <div className="absolute left-1/2 top-1/2 z-10 flex w-[min(420px,90%)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-[12px] border border-line2 bg-panel/95 p-4 text-[13px] shadow-[0_16px_40px_-12px_rgb(0_0_0/0.7)] backdrop-blur" role="alert">
                     <span className="font-semibold text-ink">Tracking did not find it</span>
                     <span className="text-mute">{trackError}</span>
                     <div className="mt-1 flex flex-wrap gap-2">
@@ -781,6 +802,7 @@ export default function Editor({ source, preset, onBack }) {
                 )}
               </>
             )}
+          </div>
           </div>
           <Timeline
             clip={clip} frames={frames} fps={fps} cue={ready ? cue : null} frame={frame}
@@ -822,9 +844,9 @@ export default function Editor({ source, preset, onBack }) {
 
 function ToolBtn({ icon, label, note, kbd, active, disabled, onClick }) {
   return (
-    <Tip title={label} note={note} kbd={kbd} side="bottom" align="start">
+    <Tip title={label} note={note} kbd={kbd} side="top">
       <button type="button" aria-label={label} aria-pressed={active} disabled={disabled} onClick={onClick}
-        className={cx("inline-flex h-8 w-8 items-center justify-center rounded-[8px] disabled:opacity-35", active ? "bg-raised text-ink" : "text-mute hover:text-ink")}>
+        className={cx("inline-flex h-8 w-8 items-center justify-center rounded-[8px] disabled:opacity-35", active ? "bg-sel text-ink" : "text-mute hover:bg-raised hover:text-ink")}>
         <Icon name={icon} size={15} />
       </button>
     </Tip>
@@ -832,15 +854,15 @@ function ToolBtn({ icon, label, note, kbd, active, disabled, onClick }) {
 }
 
 function Pill({ children }) {
-  return <p className="pointer-events-none absolute bottom-3 left-1/2 z-10 max-w-[80%] -translate-x-1/2 rounded-full bg-black/75 px-3.5 py-1.5 text-center text-xs font-medium text-white">{children}</p>;
+  return <p className="pointer-events-none absolute left-1/2 top-3 z-10 max-w-[80%] -translate-x-1/2 rounded-[8px] bg-black/75 px-3 py-1.5 text-center text-xs font-medium text-white backdrop-blur">{children}</p>;
 }
 
 function Toast({ toast, onClose }) {
   return (
-    <div role="status" key={toast.id} className="fixed left-1/2 top-3 z-[150] flex max-w-[90%] -translate-x-1/2 items-center gap-3 rounded-[10px] border border-line2 bg-raised py-1.5 pl-3.5 pr-1.5 text-sm text-ink shadow-[0_14px_34px_-10px_rgb(0_0_0/0.7)]">
+    <div role="status" key={toast.id} className="fixed left-1/2 top-14 z-[150] flex max-w-[90%] -translate-x-1/2 items-center gap-2 rounded-[10px] border border-line2 bg-raised py-1 pl-3 pr-1 text-[13px] text-ink shadow-[0_14px_34px_-10px_rgb(0_0_0/0.7)]">
       <span>{toast.text}</span>
-      {toast.action && <button type="button" className="rounded-[7px] px-2.5 py-1 text-sm font-semibold text-accent hover:bg-panel" onClick={() => { onClose(); toast.action.run(); }}>{toast.action.label}</button>}
-      <button type="button" aria-label="Dismiss" className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-mute hover:bg-panel hover:text-ink" onClick={onClose}><Icon name="x" size={13} /></button>
+      {toast.action && <button type="button" className="rounded-[6px] px-2.5 py-1 text-[13px] font-semibold text-accent hover:bg-sel" onClick={() => { onClose(); toast.action.run(); }}>{toast.action.label}</button>}
+      <button type="button" aria-label="Dismiss" className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-mute hover:bg-sel hover:text-ink" onClick={onClose}><Icon name="x" size={13} /></button>
     </div>
   );
 }
@@ -852,7 +874,7 @@ function LocalPreview({ upload, sample, error, onChoose, onBack, now }) {
     <div className="absolute inset-0">
       {src && <video src={src} muted loop playsInline autoPlay className="absolute inset-0 h-full w-full object-contain opacity-80" />}
       {error ? (
-        <div className="absolute left-1/2 top-1/2 flex w-[min(440px,90%)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-[14px] border border-line2 bg-panel/95 p-4 text-sm shadow-lg" role="alert">
+        <div className="absolute left-1/2 top-1/2 flex w-[min(420px,90%)] -translate-x-1/2 -translate-y-1/2 flex-col gap-2 rounded-[12px] border border-line2 bg-panel/95 p-4 text-[13px] shadow-[0_16px_40px_-12px_rgb(0_0_0/0.7)] backdrop-blur" role="alert">
           <span className="font-semibold text-ink">{error.code === "clip_too_long" ? "This clip is too long" : "The clip could not be used"}</span>
           <span className="text-mute">{uploadHelp(error)}</span>
           <div className="mt-1 flex flex-wrap gap-2">
@@ -861,14 +883,14 @@ function LocalPreview({ upload, sample, error, onChoose, onBack, now }) {
           </div>
         </div>
       ) : upload && (
-        <div className="absolute bottom-4 left-1/2 flex w-[min(360px,86%)] -translate-x-1/2 flex-col gap-1.5 rounded-[12px] bg-black/75 px-4 py-3 text-white" role="status">
-          <span className="text-sm font-medium">
+        <div className="absolute bottom-4 left-1/2 flex w-[min(360px,86%)] -translate-x-1/2 flex-col gap-1.5 rounded-[12px] border border-line2 bg-panel/90 px-4 py-3 text-ink backdrop-blur" role="status">
+          <span className="text-[13px] font-medium">
             {upload.phase === "prepare" ? `Preparing the clip · ${clock(now - (upload.started || now))}` : upload.phase === "upload" ? `Uploading${upload.pct != null ? ` · ${upload.pct}%` : "…"}` : sample ? "Loading the sample…" : "Checking the clip…"}
           </span>
-          <span className="h-1 overflow-hidden rounded-full bg-white/15">
+          <span className="h-1 overflow-hidden rounded-full bg-line2">
             {upload.phase === "upload" && upload.pct != null ? <span className="block h-full bg-accent" style={{ width: `${upload.pct}%` }} /> : <span className="bar-processing block h-full w-full" />}
           </span>
-          <span className="text-xs text-white/70">{upload.phase === "prepare" ? "CueFX makes a 24 fps copy to track, usually 10 to 20 s. Tracking starts next." : "The clip plays here meanwhile."}</span>
+          <span className="text-xs text-mute">{upload.phase === "prepare" ? "CueFX makes a 24 fps copy to track, usually 10 to 20 s. Tracking starts next." : "The clip plays here meanwhile."}</span>
         </div>
       )}
     </div>
@@ -877,7 +899,7 @@ function LocalPreview({ upload, sample, error, onChoose, onBack, now }) {
 
 function Mark() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 18c4-9 10-12 16-12M17 3l3 3-3 3" /><circle cx="6" cy="17" r="2" />
     </svg>
   );
@@ -891,8 +913,8 @@ function TakesButton({ takes, now, onOpen }) {
   return (
     <Tip title="Takes" note={takes.length ? (live ? `Take ${live.n}: ${stageLine(live, now)}` : "Watch, compare and download your takes.") : "Rendered takes open here."} side="bottom">
       <button type="button" onClick={onOpen} disabled={!takes.length}
-        className="relative inline-flex h-8 items-center gap-2 overflow-hidden rounded-[9px] border border-line2 px-3 text-sm font-medium text-ink hover:bg-raised disabled:text-faint disabled:hover:bg-transparent">
-        <Icon name="film" size={15} className={live ? "text-accent" : failed ? "text-err" : "text-mute"} />
+        className="relative inline-flex h-8 items-center gap-1.5 overflow-hidden rounded-[8px] bg-raised px-3 text-[13px] font-medium text-ink hover:bg-sel disabled:bg-transparent disabled:text-faint">
+        <Icon name="film" size={14} className={live ? "text-accent" : failed ? "text-err" : "text-mute"} />
         Takes{takes.length ? <span className="tnum text-mute">{takes.length}</span> : null}
         {live && <span className="absolute bottom-0 left-0 h-[2px] bg-accent transition-[width] duration-1000" style={{ width: `${pct}%` }} />}
       </button>
