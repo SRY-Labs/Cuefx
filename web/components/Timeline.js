@@ -197,7 +197,7 @@ export default function Timeline({
       <div className="flex">
         <div className="w-[88px] flex-none border-r border-line text-xs text-mute">
           <div className="border-b border-line" style={{ height: LANE.ruler }} />
-          <div className="flex items-center gap-2 border-b border-line px-3" style={{ height: LANE.track }}><span aria-hidden="true" className="h-2 w-2 flex-none rounded-full bg-track" />{state === "ready" ? "Tracked" : state === "failed" ? "No track" : "Tracking"}</div>
+          <div className="flex items-center gap-2 whitespace-nowrap border-b border-line px-3" style={{ height: LANE.track }}><span aria-hidden="true" className="h-2 w-2 flex-none rounded-full bg-track" />{state === "ready" ? "Tracked" : state === "failed" ? "No track" : "Tracking"}</div>
           <div className="flex items-center gap-2 border-b border-line px-3" style={{ height: LANE.phases }}><span aria-hidden="true" className="h-2 w-2 flex-none rounded-[2px] bg-ph-held" />Effect</div>
           <div className="flex items-center gap-2 px-3" style={{ height: LANE.points }}><span aria-hidden="true" className="h-2 w-2 flex-none rotate-45 bg-path" />Path</div>
         </div>

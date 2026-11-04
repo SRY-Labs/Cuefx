@@ -160,9 +160,10 @@ export default function Editor({ source, preset, onBack }) {
   useEffect(() => { loadDefaults().then(setServerDefaults).catch(() => {}); }, []);
 
   /* ------------------------------------------------------------ toast */
-  function say(text, action, ms = 6000) {
+  /** A short message in the snackbar: a title, an optional line under it, a tone and up to two actions. */
+  function say(text, { detail, tone = "info", action, actions, ms = 6000 } = {}) {
     clearTimeout(toastTimer.current);
-    setToast({ text, action, id: Date.now() });
+    setToast({ text, detail, tone, actions: actions || (action ? [action] : []), id: Date.now() });
     toastTimer.current = setTimeout(() => setToast(null), ms);
   }
   useEffect(() => () => clearTimeout(toastTimer.current), []);
@@ -247,11 +248,11 @@ export default function Editor({ source, preset, onBack }) {
         refresh(start);
         const total = result.summary?.total || target.frames;
         const tracked = result.summary?.tracked ?? total;
-        say(`Tracking done · the ${partName(result.cue)} is followed on ${tracked} of ${total} frames.`);
+        say("Tracking done", { tone: "success", detail: `The ${partName(result.cue)} is followed on ${tracked} of ${total} frames.` });
       } else {
         record(cueRef.current);
         commit(adoptTrack(cueRef.current, result.cue));
-        say(`Now tracking the ${partName(result.cue)}. Path, look, size and timing are kept.`);
+        say(`Now tracking the ${partName(result.cue)}`, { tone: "success", detail: "Path, look, size and timing are kept." });
       }
       setAnchor({ part, side });
     } catch (err) {
@@ -272,7 +273,7 @@ export default function Editor({ source, preset, onBack }) {
     if (!clip || trackState === "upload") return;
     if (part === "palm" && current && !palms.current[side]) {
       setPicking({ part, side });
-      say("Click the palm on the video so CueFX tracks the right hand.");
+      say("Click the palm on the video", { detail: "So CueFX tracks the right hand." });
       return;
     }
     track(clip, { part, side }, part === "palm" ? palms.current[side] : null);
@@ -286,7 +287,7 @@ export default function Editor({ source, preset, onBack }) {
     if (!clip || trackState === "upload") return;
     if (part === "palm" && current && !palms.current[side]) {
       setPicking({ part, side });
-      say("Click the palm on the video so CueFX tracks the right hand.");
+      say("Click the palm on the video", { detail: "So CueFX tracks the right hand." });
       return;
     }
     track(clip, { part, side }, part === "palm" ? palms.current[side] : null);
@@ -398,9 +399,9 @@ export default function Editor({ source, preset, onBack }) {
   function addPoint(at) {
     const current = cueRef.current;
     const last = current.route?.[current.route.length - 1]?.f;
-    if (last != null && last >= frames - 1) { say("The path already reaches the last frame of the clip. Move a point earlier, then add one."); return; }
+    if (last != null && last >= frames - 1) { say("No room for another point", { tone: "warn", detail: "The path already reaches the last frame of the clip. Move a point earlier, then add one." }); return; }
     const result = addPathPoint(current, at.x, at.y);
-    if (result.refused) { say(result.refused); return; }
+    if (result.refused) { say("The point was not added", { tone: "warn", detail: result.refused }); return; }
     record(cueRef.current);
     setSelected(result.index);
     setFrame(result.cue.route[result.index].f);
@@ -429,9 +430,9 @@ export default function Editor({ source, preset, onBack }) {
       const result = await proposeTiming(cueForWire(cueRef.current));
       record(cueRef.current);
       commit(result.cue);
-      say("Points re-timed to a constant speed.", { label: "Undo", run: undo });
+      say("Points re-timed", { tone: "success", detail: "They now move at a constant speed. Positions stay.", action: { label: "Undo", run: undo } });
     } catch (err) {
-      say(err?.message || "The points could not be re-timed.");
+      say("The points could not be re-timed", { tone: "error", detail: err?.message });
     } finally {
       setEvening(false);
     }
@@ -529,8 +530,8 @@ export default function Editor({ source, preset, onBack }) {
     runTake(take, (patch) => {
       updateTake(take.id, patch);
       if (playerRef.current === take.id && (patch.status === "done" || patch.status === "failed")) return;
-      if (patch.status === "done") say(`Take ${take.n} is ready.`, { label: "Watch", run: () => setPlayer(take.id) });
-      if (patch.status === "failed") say(`Take ${take.n} stopped at the ${STAGES.find((stage) => stage.id === patch.failedStage)?.name.toLowerCase() || "render"}.`, { label: "Show", run: () => setPlayer(take.id) });
+      if (patch.status === "done") say(`Take ${take.n} is ready`, { tone: "success", detail: "Watch it, compare it or download it.", action: { label: "Watch", run: () => setPlayer(take.id) } });
+      if (patch.status === "failed") say(`Take ${take.n} stopped`, { tone: "error", detail: `At the ${STAGES.find((stage) => stage.id === patch.failedStage)?.name.toLowerCase() || "render"}. The stages before it are kept, so it can retry from there.`, action: { label: "Show", run: () => setPlayer(take.id) } });
     }, controller.signal);
   }
 
@@ -541,7 +542,7 @@ export default function Editor({ source, preset, onBack }) {
     if (renderBlock) return;
     if (!ready || busy) { setPending(kind); return; }
     if (kind === "full" && promptBlocked) {
-      say("The prompt needs fixing before the styled frame can render. It is in the Prompt tab.");
+      say("The prompt needs fixing", { tone: "error", detail: "The styled frame cannot render with it. It is in the Prompt tab." });
       return;
     }
     setPlaying(false);
@@ -552,7 +553,7 @@ export default function Editor({ source, preset, onBack }) {
     setTakes((list) => [...list, take]);
     launch(take);
     if (open) setPlayer(take.id);
-    else say(`Take ${take.n} started rendering.`, { label: "Watch", run: () => setPlayer(take.id) });
+    else say(`Take ${take.n} started rendering`, { detail: "Tracking finished, so the queued render began.", action: { label: "Watch", run: () => setPlayer(take.id) } });
   }
 
   // A render asked for while the clip was still uploading or tracking starts as soon as the cue is checked.
@@ -581,7 +582,7 @@ export default function Editor({ source, preset, onBack }) {
     } else setPromptAuto(true);
     if (take.settings.videoPrompt !== LTX_PROMPT) { setVideoAuto(false); setCustomVideo(take.settings.videoPrompt); } else setVideoAuto(true);
     setPlayer(null);
-    say(`Settings from take ${take.n} are back in the editor.`, { label: "Undo", run: undo });
+    say(`Settings from take ${take.n} are back`, { tone: "success", detail: "The editor now matches that take.", action: { label: "Undo", run: undo } });
   }
 
   const lastTake = takes[takes.length - 1];
@@ -633,12 +634,12 @@ export default function Editor({ source, preset, onBack }) {
 
   // Entering the draw tool says once how it works, in the snackbar.
   useEffect(() => {
-    if (tool === "draw" && ready && cue && !holdsOnBody(cue.behaviour)) say("Click the video to add points after the last one. V moves points, including the release.", null, 4000);
+    if (tool === "draw" && ready && cue && !holdsOnBody(cue.behaviour)) say("Drawing the path", { detail: "Click the video to add points after the last one. V moves points, including the release.", ms: 4000 });
   }, [tool]);
 
   function goHome() {
     if (running) {
-      say("A take is still rendering. Leaving stops following it here.", { label: "Leave", run: onBack });
+      say("A take is still rendering", { tone: "warn", detail: "Leaving stops following it here.", actions: [{ label: "Leave", run: onBack }, { label: "Stay", run: () => setToast(null) }] });
       return;
     }
     onBack();
@@ -676,7 +677,7 @@ export default function Editor({ source, preset, onBack }) {
   } else if (trackState === "failed" && trackError && !picking) {
     notice = { tone: "error", text: "Tracking did not find it", detail: trackError, actions: [{ label: "Pick on the video", run: togglePick }, { label: "Try again", run: () => track(clip, anchor) }] };
   } else if (picking) {
-    notice = { text: `Click the ${picking.part === "head" ? "head" : `${picking.side} ${picking.part}`} on the video`, kbd: "Esc", actions: [{ label: "Cancel", run: () => setPicking(null) }] };
+    notice = { text: `Click the ${picking.part === "head" ? "head" : `${picking.side} ${picking.part}`} on the video`, detail: "CueFX tracks the point you click.", kbd: "Esc", actions: [{ label: "Cancel", run: () => setPicking(null) }] };
   } else if (trackState === "upload" && upload) {
     notice = {
       busy: true,
@@ -870,29 +871,34 @@ function ToolBtn({ icon, label, note, kbd, active, disabled, onClick }) {
  * shows for a few seconds and then gives the place back to the standing notice (work in progress, a mode, or a
  * problem with its fixes). Only one shows at a time, so a message is never repeated somewhere else.
  */
+const TONE_ICON = { success: ["checkCircle", "text-ink"], error: ["alert", "text-err"], warn: ["alert", "text-warn"], info: ["info", "text-mute"] };
+
 function Snackbar({ toast, notice, onClose }) {
   const item = toast || notice;
   if (!item) return null;
-  const error = item.tone === "error";
-  const actions = toast ? (toast.action ? [toast.action] : []) : notice.actions || [];
+  const tone = item.tone || "info";
+  const [icon, iconTone] = TONE_ICON[tone] || TONE_ICON.info;
+  const actions = item.actions || [];
   return (
-    <div role={error ? "alert" : "status"} key={toast ? toast.id : notice.text.replace(/[\d:]+/g, "")}
-      className="fixed left-1/2 top-14 z-[150] flex w-max max-w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-[10px] border border-line2 bg-raised text-[13px] text-ink shadow-[0_14px_34px_-10px_rgb(0_0_0/0.7)]">
-      <div className="flex items-center gap-2.5 py-1 pl-3 pr-1">
-        {item.busy && <Icon name="loader" size={14} className="spin flex-none text-mute" />}
-        {error && <Icon name="alert" size={14} className="flex-none text-err" />}
-        <span className="flex min-w-0 flex-col py-1">
-          <span className={cx("tnum", (error || item.detail) && "font-medium")}>{item.text}</span>
-          {item.detail && <span className="text-xs leading-4 text-mute">{item.detail}</span>}
-        </span>
-        {item.kbd && <kbd className="flex-none rounded-[4px] bg-sel px-1.5 font-sans text-[10px] font-medium text-mute">{item.kbd}</kbd>}
-        {actions.map((action, i) => (
-          <button key={action.label} type="button" className={cx("flex-none whitespace-nowrap rounded-[6px] px-2.5 py-1 text-[13px] font-semibold hover:bg-sel", i === 0 ? "text-accent" : "text-mute hover:text-ink")}
-            onClick={() => { if (toast) onClose(); action.run(); }}>{action.label}</button>
-        ))}
-        {toast ? (
-          <button type="button" aria-label="Dismiss" className="inline-flex h-7 w-7 flex-none items-center justify-center rounded-[6px] text-mute hover:bg-sel hover:text-ink" onClick={onClose}><Icon name="x" size={13} /></button>
-        ) : <span className="w-2 flex-none" />}
+    <div role={tone === "error" ? "alert" : "status"} key={toast ? toast.id : notice.text.replace(/[\d:]+/g, "")}
+      className="fixed left-1/2 top-14 z-[150] flex w-[min(380px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-[14px] border border-line2 bg-panel text-ink shadow-[0_18px_44px_-12px_rgb(0_0_0/0.75)]">
+      <div className="flex items-start gap-3 py-3.5 pl-4 pr-2.5">
+        {item.busy ? <Icon name="loader" size={16} className="spin mt-px flex-none text-mute" /> : <Icon name={icon} size={16} className={cx("mt-px flex-none", iconTone)} />}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-[13px] font-semibold leading-[18px] tnum">{item.text}</span>
+          {item.detail && <span className="mt-0.5 text-[13px] leading-[18px] text-faint">{item.detail}</span>}
+          {(actions.length > 0 || item.kbd) && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1">
+              {actions.map((action, i) => (
+                i === 0
+                  ? <Btn key={action.label} size="sm" onClick={() => { if (toast) onClose(); action.run(); }}>{action.label}</Btn>
+                  : <button key={action.label} type="button" className="h-7 rounded-[8px] px-2 text-xs font-medium text-mute hover:text-ink hover:underline" onClick={() => { if (toast) onClose(); action.run(); }}>{action.label}</button>
+              ))}
+              {item.kbd && <span className="ml-1 text-xs text-faint">or press <kbd className="rounded-[4px] bg-sel px-1.5 font-sans text-[10px] font-medium text-mute">{item.kbd}</kbd></span>}
+            </div>
+          )}
+        </div>
+        {toast && <button type="button" aria-label="Dismiss" className="-mt-1 inline-flex h-7 w-7 flex-none items-center justify-center rounded-[8px] text-faint hover:bg-raised hover:text-ink" onClick={onClose}><Icon name="x" size={13} /></button>}
       </div>
       {!toast && item.busy && (
         <span className="h-[2px] w-full bg-line2">

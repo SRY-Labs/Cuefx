@@ -8,7 +8,7 @@ The old flow had four screens: Upload, Track, Direct, Render. Each one asked for
 
 - **One screen.** The viewer is on the left, with the timeline right under it. The effect's settings run the full height on the right, in two tabs: Effect and Prompt. Takes open in their own player.
 - **Nothing moves the user.** Upload, tracking and renders report in place: the tracking lane, the Takes button and one snackbar. When a take finishes, a message offers Watch. The viewer and the settings tabs never switch by themselves.
-- **One place for messages.** The snackbar at the top centre, under the bar, carries every message: work in progress (upload, tracking, re-tracking) with its progress, modes (picking a point, with Esc), problems with their fixes (a clip that is too long, tracking that found nobody), and short results with an action (Undo, Watch). Only one shows at a time and nothing is written over the video.
+- **One place for messages.** The snackbar at the top centre, under the bar, carries every message: work in progress (upload, tracking, re-tracking) with its progress, modes (picking a point, with Esc), problems with their fixes (a clip that is too long, tracking that found nobody), and short results with an action (Undo, Watch). Each one has an icon, a title, a line under it, and its actions below: a secondary button first, then text links. Only one shows at a time and nothing is written over the video.
 - **Every setting lives in one place, and stays editable.** Changing the body point re-tracks in place and keeps the path, look, size and timing.
 
 ## The flow
@@ -17,7 +17,11 @@ The old flow had four screens: Upload, Track, Direct, Render. Each one asked for
 2. **The editor opens straight away.** An uploaded clip plays from the browser while it uploads and prepares. Then the server's frames take over and tracking runs. The tracking lane fills, and the header shows a timer.
 3. **The user shapes the effect.** The Effect tab has Anchor, Motion and Look; the Prompt tab has the styled frame, the video and the seed. Every section opens and closes with an arrow, and a closed one shows its value.
 4. **Render.** Pressing Render opens the take's view, where its stages fill in. Pressed while the clip is still uploading or tracking, it queues, starts when the cue is checked, and offers Watch. A take runs the guide pass, the styled frame, then the video. The user can keep editing meanwhile.
-5. **Takes.** The Takes button opens a full-screen player: the takes listed on the left, the result large, a transport with frame steps, loop, speed and side-by-side compare. It has "Use these settings" and downloads for the video, the styled frame and the guide pass. A failed stage keeps the stages before it and offers Retry from that stage.
+5. **The render view.** Pressing Render opens it, and the Takes button opens it again later. The takes are listed on the left. Two views:
+   - **Breakdown** (the default) shows the take as three connected nodes. **Your direction** is the guide pass. It gives its first effect frame to **The look**, the styled frame from ComfyUI. Both then feed **The effect**, the LTX video. Each node shows Done, Running, Waiting or Stopped, and a wire into a running node moves. The guide pass and the video play together on one scrubber, lined up on the same plate frame.
+   - **Result** shows the final media large. **Compare** lives here: it puts another take's video beside this one on the same scrubber.
+
+   The view has "Use these settings" and downloads for the video, the styled frame and the guide pass. A failed stage keeps the stages before it and offers Retry from that stage. A guide-only take opens straight on Result.
 
 ## The look
 

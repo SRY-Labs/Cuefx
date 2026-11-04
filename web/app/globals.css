@@ -164,3 +164,8 @@ input[type="range"].compare-range { -webkit-appearance: none; appearance: none; 
 .fx-field:hover:not(:disabled) { border-color: rgb(var(--c-line2)); }
 .fx-field:focus { border-color: rgb(var(--c-accent) / 0.8); outline: none; }
 .fx-field[aria-invalid="true"] { border-color: rgb(var(--c-err)); }
+
+/* A wire into a node that is still running moves, like a signal on its way. */
+@keyframes wire-flow { to { stroke-dashoffset: -24; } }
+.wire-run { animation: wire-flow 0.9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .wire-run { animation: none; } }
