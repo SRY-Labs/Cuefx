@@ -26,7 +26,7 @@
   },
   "5508": {
     "inputs": {
-      "value": "Use the reference image as the effect. Move it along the path in the guide video, matching the path's position, scale, and motion. Keep the person, the room, and everything else the same."
+      "value": "Photoreal, camera locked off, matching the first frame. The same person and the same room, with the effect keeping the material, color, and light it has in that frame."
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {

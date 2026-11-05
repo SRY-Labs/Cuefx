@@ -10,7 +10,7 @@ export const STAGES = [
   { id: "video", name: "Video", typical: 60 },
 ];
 
-export const LTX_PROMPT = "Use the reference image as the effect. Move it along the path in the guide video, matching the path's position, scale, and motion. Keep the person, the room, and everything else the same.";
+export const LTX_PROMPT = "Photoreal, camera locked off, matching the first frame. The same person and the same room, with the effect keeping the material, color, and light it has in that frame.";
 
 /** The stages a take runs: a guide-only take stops after the guide pass. */
 export function stagesOf(take) {
