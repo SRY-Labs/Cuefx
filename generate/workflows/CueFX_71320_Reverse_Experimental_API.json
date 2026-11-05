@@ -27,7 +27,7 @@
   },
   "5508": {
     "inputs": {
-      "value": "One luminous energy orb in the original room with the person visible, matching the supplied look image and following the guide video's orb position, scale, and motion. Preserve the original scene. In reversed time the orb contracts and dims toward clean source frames."
+      "value": "Use the reference image as the effect. Move it along the path in the guide video, matching the path's position, scale, and motion. Keep the person, the room, and everything else the same."
     },
     "class_type": "PrimitiveStringMultiline",
     "_meta": {

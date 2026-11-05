@@ -214,7 +214,8 @@ function Breakdown({ take, clip, now, guideRef, videoRef, onRetry, onToggle }) {
         {parts.video.state !== "none" && (
           <div className="self-start">
             <GraphNode title="The effect" tag="LTX video" state={parts.video.state} highlight
-              meta={`LTX moves the look along your direction${range ? `, frames ${range.start}–${range.end - 1}` : ""}.`}
+              meta={range ? `The whole clip, with the effect on frames ${range.start}–${range.end - 1}.`
+                : "The whole clip, with the effect where you directed it."}
               ports={<><Port side="in" color={WIRE.video} label="guide video" portRef={ports.vIn1} /><Port side="in" color={WIRE.image} label="styled frame" portRef={ports.vIn2} /></>}>
               {parts.video.url ? <video ref={videoRef} src={parts.video.url} muted playsInline className="absolute inset-0 h-full w-full cursor-pointer object-contain" onClick={onToggle} />
                 : parts.video.state === "failed" ? <Waiting title="The video stopped" note={failedNote} />

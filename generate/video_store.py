@@ -11,6 +11,7 @@ import threading
 import time
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from cue import api as cue_api
@@ -18,7 +19,7 @@ from cue.window import effect_window
 from errors import ApiError, internal, invalid, not_found
 from generate.reference import _cue, _seed_of
 from generate.video_render import VideoRenderError, _credentials, render_video
-from media.video import VideoError, VideoWriter, read_frames
+from media.video import BT709_OUT, VideoError, VideoWriter, add_audio, probe, read_frames
 from render.jobs import _write_json
 from render.queue import RenderQueue
 
@@ -61,6 +62,88 @@ def write_prefix(plate: Path, start: int, count: int, dest: Path, fps: float) ->
             writer.write(frame)
 
 
+def _scaled(frame: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """`frame` scaled to `size` (width, height)."""
+    height, width = frame.shape[:2]
+    if (width, height) == size:
+        return frame
+    larger = width > size[0] or height > size[1]
+    return cv2.resize(frame, size, interpolation=cv2.INTER_AREA if larger else cv2.INTER_LINEAR)
+
+
+def frame_count(video: Path) -> int:
+    """How many frames `video` decodes to."""
+    count = 0
+    reader = read_frames(video)
+    try:
+        for _ in reader:
+            count += 1
+    finally:
+        reader.close()
+    return count
+
+
+def splice_window(plate: Path, window: Path, start: int, length: int, dest: Path) -> None:
+    """Replace `length` frames of `plate`, from `start`, with `window` scaled to the plate.
+
+    `dest` has every frame of the upload. Frames outside the window stay the upload, and the
+    window may sit at the first or the last frame. The result is Rec.709, with the plate's audio.
+    `window` must decode to exactly `length` frames.
+    """
+    if start < 0:
+        raise ValueError(f"frame {start} is outside the upload")
+    if length < 1:
+        raise ValueError("the effect window is empty")
+    info = probe(plate)
+    size = (info.width, info.height)
+    bare = dest.with_name(f"{dest.stem}.video.mp4")
+    end = start + length
+    try:
+        plate_frames, window_frames = _join(plate, window, start, end, bare, size, info.fps)
+    except Exception:
+        bare.unlink(missing_ok=True)
+        raise
+    if plate_frames < end:
+        bare.unlink(missing_ok=True)
+        raise ValueError(f"the upload does not have {length} frames from {start}")
+    if window_frames != length:
+        bare.unlink(missing_ok=True)
+        raise ValueError(f"the LTX video has {window_frames} frames, not {length}")
+    try:
+        for warning in add_audio(bare, plate, dest):
+            log.warning("%s", warning)
+    finally:
+        bare.unlink(missing_ok=True)
+
+
+def _join(plate: Path, window: Path, start: int, end: int, dest: Path, size: tuple[int, int],
+          fps: float) -> tuple[int, int]:
+    """Write the joined frames to `dest`. Returns `(plate frames read, window frames read)`."""
+    plate_frames = 0
+    window_frames = 0
+    plate_reader = read_frames(plate)
+    window_reader = read_frames(window)
+    try:
+        with VideoWriter(dest, size, fps, 18, BT709_OUT) as writer:
+            for number, frame in enumerate(plate_reader):
+                plate_frames = number + 1
+                if start <= number < end:
+                    try:
+                        incoming = next(window_reader)
+                    except StopIteration:
+                        raise ValueError(f"the LTX video has {window_frames} frames, not {end - start}") from None
+                    window_frames += 1
+                    writer.write(_scaled(incoming, size))
+                else:
+                    writer.write(frame)
+            for _ in window_reader:
+                window_frames += 1
+    finally:
+        plate_reader.close()
+        window_reader.close()
+    return plate_frames, window_frames
+
+
 class VideoStore:
     """Videos under `data/videos/<id>`. The MP4 is also written beside the composite."""
 
@@ -85,6 +168,7 @@ class VideoStore:
             cue = _cue(merge_dir)
             window = effect_window(cue)
             used = _seed_of(cue, seed)
+            upload = self._upload(merge_dir)
         except ValueError as exc:
             raise invalid(str(exc)) from exc
         if window.length < MIN_GUIDE_FRAMES or (window.length - 1) % 8:
@@ -98,7 +182,7 @@ class VideoStore:
             log.error("video cannot start: %s", exc)
             raise _lost() from exc
         guide, _name = self.standins.file(job_id, "layout.mp4", wait=False)
-        plate = merge_dir / "final.mp4"
+        composite = merge_dir / "final.mp4"
         video_id = hashlib.sha256(
             json.dumps([job_id, generation_id, text, used], separators=(",", ":"), ensure_ascii=False).encode()
         ).hexdigest()[:16]
@@ -108,12 +192,19 @@ class VideoStore:
                 return self._document(video_id), 202
             saved = self._read(video_id)
             if saved and saved.get("status") == "done" and self._mp4(video_id).is_file():
+                try:
+                    self._ensure_stitched(video_id, upload, window.start, window.length, cue.frames, saved)
+                except (ValueError, VideoError) as exc:
+                    raise invalid(str(exc)) from exc
                 self._publish(merge_dir, self._mp4(video_id))
                 return self._document(video_id), 200
             self._write(self._record(video_id, job_id, generation_id, text, used, "queued", None))
             self.queue.submit(
                 video_id,
-                lambda: self._run(video_id, merge_dir, guide, plate, still, window.start, cue.fps, text, used),
+                lambda: self._run(
+                    video_id, merge_dir, guide, composite, upload, still,
+                    window.start, window.length, cue.fps, text, used,
+                ),
             )
             return self._document(video_id), 202
 
@@ -139,6 +230,45 @@ class VideoStore:
             raise invalid(f"generation {generation_id} is for another job", 409)
         return still
 
+    def _upload(self, merge_dir: Path) -> Path:
+        """The conformed upload this composite was rendered on."""
+        note = merge_dir / "standin.json"
+        if not note.is_file():
+            raise ValueError("the composite has no clip")
+        try:
+            clip_id = json.loads(note.read_text(encoding="utf-8"))["clip_id"]
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise ValueError("the composite has no clip") from exc
+        if not isinstance(clip_id, str) or not clip_id:
+            raise ValueError("the composite has no clip")
+        return self.standins.clips.plate(clip_id)
+
+    def _ensure_stitched(self, video_id: str, upload: Path, start: int, length: int, plate_frames: int,
+                         saved: dict) -> None:
+        """Join a finished window-only file to the upload once. A file that is already the whole clip is left."""
+        if saved.get("stitched"):
+            return
+        mp4 = self._mp4(video_id)
+        count = frame_count(mp4)
+        if count == plate_frames:
+            saved["stitched"] = True
+            self._write(saved)
+            return
+        if count != length:
+            log.error("video %s is %s frames; the window is %s and the upload is %s",
+                      video_id, count, length, plate_frames)
+            return
+        stitched = mp4.with_name("video.stitched.mp4")
+        try:
+            splice_window(upload, mp4, start, length, stitched)
+            os.replace(stitched, mp4)
+        except Exception:
+            stitched.unlink(missing_ok=True)
+            raise
+        saved["stitched"] = True
+        self._write(saved)
+        log.info("video %s joined to the upload", video_id)
+
     def _composite(self, job_id: str) -> Path:
         try:
             path, _name = self.standins.file(job_id, "hardcomp.mp4", wait=False)
@@ -154,27 +284,34 @@ class VideoStore:
             raise
         return path.parent
 
-    def _run(self, video_id: str, merge_dir: Path, guide: Path, plate: Path, still: Path,
-             start: int, fps: float, prompt: str, seed: int) -> None:
+    def _run(self, video_id: str, merge_dir: Path, guide: Path, composite: Path, upload: Path, still: Path,
+             start: int, length: int, fps: float, prompt: str, seed: int) -> None:
         started = time.perf_counter()
         folder = self._folder(video_id)
         prefix = folder / "prefix.mp4"
         partial = folder / "video.part.mp4"
+        stitched = folder / "video.stitched.mp4"
         try:
             self._mark(video_id, "running")
             try:
-                write_prefix(plate, start, PREFIX_FRAMES, prefix, fps)
+                write_prefix(composite, start, PREFIX_FRAMES, prefix, fps)
             except VideoError as exc:
                 raise ValueError(f"the composite cannot be read: {exc}") from exc
             self.render(guide, still, prefix, prompt, seed, partial)
-            partial.replace(self._mp4(video_id))
+            try:
+                splice_window(upload, partial, start, length, stitched)
+            except VideoError as exc:
+                raise ValueError(f"the video cannot be joined to the upload: {exc}") from exc
+            os.replace(stitched, self._mp4(video_id))
+            partial.unlink(missing_ok=True)
             saved = self._record(video_id, self._read(video_id)["job_id"], self._read(video_id)["generation_id"],
-                                 prompt, seed, "done", None)
+                                 prompt, seed, "done", None, stitched=True)
             self._publish(merge_dir, self._mp4(video_id))
             self._write(saved)
             log.info("video %s rendered in %.1f s", video_id, time.perf_counter() - started)
         except Exception as exc:
             partial.unlink(missing_ok=True)
+            stitched.unlink(missing_ok=True)
             err = self._as_api(video_id, exc)
             self._fail(video_id, err)
             if err is exc:
@@ -221,9 +358,9 @@ class VideoStore:
         os.replace(part, dest)
 
     def _record(self, video_id: str, job_id: str, generation_id: str, prompt: str, seed: int, status: str,
-                error: dict | None) -> dict:
+                error: dict | None, *, stitched: bool = False) -> dict:
         return {"id": video_id, "job_id": job_id, "generation_id": generation_id, "prompt": prompt,
-                "seed": seed, "status": status, "error": error}
+                "seed": seed, "status": status, "error": error, "stitched": stitched}
 
     def _mark(self, video_id: str, status: str) -> None:
         saved = self._read(video_id) or {"id": video_id}

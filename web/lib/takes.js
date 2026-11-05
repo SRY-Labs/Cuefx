@@ -10,7 +10,7 @@ export const STAGES = [
   { id: "video", name: "Video", typical: 60 },
 ];
 
-export const LTX_PROMPT = "One luminous energy orb in the original room with the person visible, matching the supplied look image and following the guide video's orb position, scale, and motion. Preserve the original scene. In reversed time the orb contracts and dims toward clean source frames.";
+export const LTX_PROMPT = "Use the reference image as the effect. Move it along the path in the guide video, matching the path's position, scale, and motion. Keep the person, the room, and everything else the same.";
 
 /** The stages a take runs: a guide-only take stops after the guide pass. */
 export function stagesOf(take) {
